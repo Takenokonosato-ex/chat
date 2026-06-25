@@ -47,7 +47,10 @@
   </Applications>
 
   <Capabilities>
+    <Capability Name="privateNetworkClientServer" />
     <rescap:Capability Name="runFullTrust" />
     <systemai:Capability Name="systemAIModels"/>
+    <DeviceCapability Name="bluetooth" />
+    <DeviceCapability Name="proximity" />
   </Capabilities>
 </Package>

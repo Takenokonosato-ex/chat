@@ -13,7 +13,72 @@
         <MicaBackdrop />
     </Window.SystemBackdrop>
 
-    <Grid>
+    <Grid Padding="12" RowDefinitions="Auto,*,Auto" RowSpacing="12">
+
+        <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="8">
+            <StackPanel Spacing="4">
+                <TextBlock Text="BLE 発見" FontSize="18" FontWeight="SemiBold" />
+                <TextBlock x:Name="LocalSessionText" TextWrapping="Wrap" />
+                <TextBlock x:Name="BleStatusText" Text="Advertising: Stopped / Scanning: Stopped" TextWrapping="Wrap" />
+                <TextBlock x:Name="BleErrorText" Foreground="IndianRed" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <Button
+                x:Name="StartAdvertiseButton"
+                Grid.Column="1"
+                Content="Advertise 開始"
+                Click="StartAdvertiseButton_Click" />
+            <Button
+                x:Name="StopAdvertiseButton"
+                Grid.Column="2"
+                Content="停止"
+                IsEnabled="False"
+                Click="StopAdvertiseButton_Click" />
+            <Button
+                x:Name="StartScanButton"
+                Grid.Column="3"
+                Content="Scan 開始"
+                Click="StartScanButton_Click" />
+            <Button
+                x:Name="StopScanButton"
+                Grid.Column="4"
+                Content="停止"
+                IsEnabled="False"
+                Click="StopScanButton_Click" />
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="12">
+            <Grid RowDefinitions="Auto,*" RowSpacing="6">
+                <TextBlock Text="発見済み peer" FontWeight="SemiBold" />
+                <ListView
+                    x:Name="PeerList"
+                    Grid.Row="1"
+                    DisplayMemberPath="DisplayText" />
+            </Grid>
+
+            <Grid Grid.Column="1" RowDefinitions="Auto,*" RowSpacing="6">
+                <TextBlock Text="メッセージ一覧" FontWeight="SemiBold" />
+                <ListView
+                    x:Name="ChatList"
+                    Grid.Row="1" />
+            </Grid>
+        </Grid>
+
+        <Grid
+            Grid.Row="2"
+            ColumnDefinitions="*,Auto"
+            ColumnSpacing="8">
+
+            <TextBox
+                x:Name="MessageBox"
+                PlaceholderText="メッセージを入力..."
+                VerticalAlignment="Center" />
+
+            <Button
+                Grid.Column="1"
+                Content="送信"
+                Click="SendButton_Click" />
+        </Grid>
 
     </Grid>
 </Window>
