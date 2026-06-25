@@ -1,7 +1,5 @@
 using System;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Advertisement;
 using Windows.Storage.Streams;
@@ -10,11 +8,7 @@ namespace chat;
 
 public sealed class BleDiscoveryService : IDisposable
 {
-    private const ushort PrototypeCompanyId = 0xFFFF;
-    private static readonly byte[] Magic = Encoding.ASCII.GetBytes("CHAT");
-
-    private readonly Guid _sessionId = Guid.NewGuid();
-    private readonly uint _nonce = CreateNonce();
+    private readonly ChatSessionPayload _localSession = ChatSessionPayload.CreateLocal();
     private BluetoothLEAdvertisementPublisher? _publisher;
     private BluetoothLEAdvertisementWatcher? _watcher;
     private bool _disposed;
@@ -24,9 +18,11 @@ public sealed class BleDiscoveryService : IDisposable
     public event EventHandler<string>? ErrorOccurred;
     public event EventHandler<BlePeer>? PeerDiscovered;
 
-    public Guid SessionId => _sessionId;
+    public ChatSessionPayload LocalSession => _localSession;
 
-    public uint Nonce => _nonce;
+    public Guid SessionId => _localSession.SessionId;
+
+    public uint Nonce => _localSession.Nonce;
 
     public bool IsAdvertising =>
         _publisher?.Status is BluetoothLEAdvertisementPublisherStatus.Started or
@@ -50,8 +46,8 @@ public sealed class BleDiscoveryService : IDisposable
         var advertisement = new BluetoothLEAdvertisement();
         advertisement.ManufacturerData.Add(new BluetoothLEManufacturerData
         {
-            CompanyId = PrototypeCompanyId,
-            Data = BuildPayload()
+            CompanyId = ChatSessionPayload.BleCompanyId,
+            Data = _localSession.ToBuffer()
         });
 
         _publisher = new BluetoothLEAdvertisementPublisher(advertisement);
@@ -166,16 +162,6 @@ public sealed class BleDiscoveryService : IDisposable
         _disposed = true;
     }
 
-    private IBuffer BuildPayload()
-    {
-        using var writer = new DataWriter();
-        writer.WriteBytes(Magic);
-        writer.WriteByte(1);
-        writer.WriteBytes(_sessionId.ToByteArray());
-        writer.WriteUInt32(_nonce);
-        return writer.DetachBuffer();
-    }
-
     private void Publisher_StatusChanged(BluetoothLEAdvertisementPublisher sender, BluetoothLEAdvertisementPublisherStatusChangedEventArgs args)
     {
         PublisherStatusChanged?.Invoke(this, $"Advertising: {args.Status}");
@@ -199,59 +185,21 @@ public sealed class BleDiscoveryService : IDisposable
     private void Watcher_Received(BluetoothLEAdvertisementWatcher sender, BluetoothLEAdvertisementReceivedEventArgs args)
     {
         var manufacturerData = args.Advertisement.ManufacturerData
-            .FirstOrDefault(data => data.CompanyId == PrototypeCompanyId);
+            .FirstOrDefault(data => data.CompanyId == ChatSessionPayload.BleCompanyId);
 
-        if (manufacturerData is null || !TryParsePayload(manufacturerData.Data, out var sessionId, out var nonce))
+        if (manufacturerData is null || !ChatSessionPayload.TryParse(manufacturerData.Data, out var session))
         {
             return;
         }
 
-        if (sessionId == _sessionId && nonce == _nonce)
+        if (session == _localSession)
         {
             return;
         }
 
         PeerDiscovered?.Invoke(
             this,
-            new BlePeer(args.BluetoothAddress, sessionId, nonce, args.RawSignalStrengthInDBm, args.Timestamp));
-    }
-
-    private static bool TryParsePayload(IBuffer payload, out Guid sessionId, out uint nonce)
-    {
-        sessionId = Guid.Empty;
-        nonce = 0;
-
-        if (payload.Length < Magic.Length + 1 + 16 + sizeof(uint))
-        {
-            return false;
-        }
-
-        var reader = DataReader.FromBuffer(payload);
-        var magic = new byte[Magic.Length];
-        reader.ReadBytes(magic);
-
-        if (!magic.SequenceEqual(Magic))
-        {
-            return false;
-        }
-
-        var version = reader.ReadByte();
-        if (version != 1)
-        {
-            return false;
-        }
-
-        var guidBytes = new byte[16];
-        reader.ReadBytes(guidBytes);
-        sessionId = new Guid(guidBytes);
-        nonce = reader.ReadUInt32();
-        return true;
-    }
-
-    private static uint CreateNonce()
-    {
-        var bytes = RandomNumberGenerator.GetBytes(sizeof(uint));
-        return BitConverter.ToUInt32(bytes);
+            new BlePeer(args.BluetoothAddress, session.SessionId, session.Nonce, args.RawSignalStrengthInDBm, args.Timestamp));
     }
 
     private void ThrowIfDisposed()

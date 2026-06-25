@@ -14,37 +14,54 @@
     </Window.SystemBackdrop>
 
     <Grid Padding="12" RowDefinitions="Auto,*,Auto" RowSpacing="12">
-
-        <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="8">
-            <StackPanel Spacing="4">
-                <TextBlock Text="BLE 発見" FontSize="18" FontWeight="SemiBold" />
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <StackPanel Spacing="6">
+                <TextBlock Text="BLE / Wi-Fi Direct チャット" FontSize="18" FontWeight="SemiBold" />
                 <TextBlock x:Name="LocalSessionText" TextWrapping="Wrap" />
-                <TextBlock x:Name="BleStatusText" Text="Advertising: Stopped / Scanning: Stopped" TextWrapping="Wrap" />
-                <TextBlock x:Name="BleErrorText" Foreground="IndianRed" TextWrapping="Wrap" />
+                <TextBlock x:Name="BleStatusText" Text="BLE: Advertising Stopped / Scanning Stopped" TextWrapping="Wrap" />
+                <TextBlock x:Name="WifiStatusText" Text="Wi-Fi Direct: Stopped / 未接続" TextWrapping="Wrap" />
+                <TextBlock x:Name="ErrorText" Foreground="IndianRed" TextWrapping="Wrap" />
             </StackPanel>
 
-            <Button
-                x:Name="StartAdvertiseButton"
-                Grid.Column="1"
-                Content="Advertise 開始"
-                Click="StartAdvertiseButton_Click" />
-            <Button
-                x:Name="StopAdvertiseButton"
-                Grid.Column="2"
-                Content="停止"
-                IsEnabled="False"
-                Click="StopAdvertiseButton_Click" />
-            <Button
-                x:Name="StartScanButton"
-                Grid.Column="3"
-                Content="Scan 開始"
-                Click="StartScanButton_Click" />
-            <Button
-                x:Name="StopScanButton"
-                Grid.Column="4"
-                Content="停止"
-                IsEnabled="False"
-                Click="StopScanButton_Click" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button
+                    x:Name="StartAdvertiseButton"
+                    Content="BLE Advertise 開始"
+                    Click="StartAdvertiseButton_Click" />
+                <Button
+                    x:Name="StopAdvertiseButton"
+                    Content="停止"
+                    IsEnabled="False"
+                    Click="StopAdvertiseButton_Click" />
+                <Button
+                    x:Name="StartScanButton"
+                    Content="BLE Scan 開始"
+                    Click="StartScanButton_Click" />
+                <Button
+                    x:Name="StopScanButton"
+                    Content="停止"
+                    IsEnabled="False"
+                    Click="StopScanButton_Click" />
+                <Button
+                    x:Name="StartWifiButton"
+                    Content="Wi-Fi Direct 開始"
+                    Click="StartWifiButton_Click" />
+                <Button
+                    x:Name="StopWifiButton"
+                    Content="停止"
+                    IsEnabled="False"
+                    Click="StopWifiButton_Click" />
+                <Button
+                    x:Name="ConnectWifiButton"
+                    Content="選択 peer に接続"
+                    IsEnabled="False"
+                    Click="ConnectWifiButton_Click" />
+                <Button
+                    x:Name="DisconnectWifiButton"
+                    Content="切断"
+                    IsEnabled="False"
+                    Click="DisconnectWifiButton_Click" />
+            </StackPanel>
         </Grid>
 
         <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="12">
@@ -53,7 +70,8 @@
                 <ListView
                     x:Name="PeerList"
                     Grid.Row="1"
-                    DisplayMemberPath="DisplayText" />
+                    DisplayMemberPath="DisplayText"
+                    SelectionChanged="PeerList_SelectionChanged" />
             </Grid>
 
             <Grid Grid.Column="1" RowDefinitions="Auto,*" RowSpacing="6">
@@ -79,6 +97,5 @@
                 Content="送信"
                 Click="SendButton_Click" />
         </Grid>
-
     </Grid>
 </Window>
