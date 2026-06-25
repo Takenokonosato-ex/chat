@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Devices.Enumeration;
 using Windows.Devices.WiFiDirect;
 using Windows.Networking;
@@ -409,12 +411,26 @@ public sealed class WifiDirectChatService : IDisposable
         TryAddOrUpdateWifiPeer(args);
     }
 
-    private void Watcher_Updated(DeviceWatcher sender, DeviceInformationUpdate args)
+    private async void Watcher_Updated(DeviceWatcher sender, DeviceInformationUpdate args)
     {
         if (_wifiPeersByDeviceId.TryGetValue(args.Id, out var peer))
         {
             peer.Update(args);
             PeerDiscovered?.Invoke(this, peer);
+        }
+        else
+        {
+            try
+            {
+                var deviceInfo = await DeviceInformation.CreateFromIdAsync(
+                    args.Id,
+                    DeviceProperties);
+                TryAddOrUpdateWifiPeer(deviceInfo);
+            }
+            catch (Exception ex)
+            {
+                ErrorOccurred?.Invoke(this, $"Wi-Fi Direct update failed: {ex.Message}");
+            }
         }
     }
 
@@ -461,27 +477,41 @@ public sealed class WifiDirectChatService : IDisposable
         }
     }
 
-    private static bool TryGetChatSession(DeviceInformation deviceInformation, out ChatSessionPayload session)
+    private static bool TryGetChatSession(
+        DeviceInformation deviceInformation,
+        out ChatSessionPayload session)
     {
         session = default;
 
-        IReadOnlyList<WiFiDirectInformationElement> elements;
         try
         {
-            // 明示的にキャスト
-            elements = (IReadOnlyList<WiFiDirectInformationElement>)WiFiDirectInformationElement.CreateFromDeviceInformation(deviceInformation);
-        }
-        catch
-        {
-            return false;
-        }
+            var elements =
+                WiFiDirectInformationElement
+                    .CreateFromDeviceInformation(deviceInformation);
 
-        foreach (var element in elements.Where(ChatSessionPayload.IsOurWifiDirectElement))
-        {
-            if (ChatSessionPayload.TryParse(element.Value, out session))
+            Debug.WriteLine(
+                $"Device={deviceInformation.Name} Elements={elements.Count}");
+            foreach (var element in elements)
             {
-                return true;
+                var oui = WindowsRuntimeBufferExtensions.ToArray(element.Oui);
+
+                Debug.WriteLine(
+                    $"Type={element.OuiType} " +
+                    $"OUI={BitConverter.ToString(oui)}");
+                if (!ChatSessionPayload.IsOurWifiDirectElement(element))
+                {
+                    continue;
+                }
+
+                if (ChatSessionPayload.TryParse(element.Value, out session))
+                {
+                    return true;
+                }
             }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(ex);
         }
 
         return false;
