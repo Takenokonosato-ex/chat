@@ -30,6 +30,15 @@ public sealed class SocketMessageChannel : IDisposable
         };
     }
 
+    public async Task<Guid> HandshakeAsync(Guid localSessionId)
+    {
+        // 自分のセッションIDを送る
+        await SendAsync(localSessionId.ToString());
+        // 相手のセッションIDを受け取る
+        var response = await ReceiveAsync();
+        return response is not null ? Guid.Parse(response) : Guid.Empty;
+    }
+
     public async Task SendAsync(string message)
     {
         ThrowIfDisposed();

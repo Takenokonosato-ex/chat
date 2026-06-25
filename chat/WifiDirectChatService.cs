@@ -146,6 +146,7 @@ public sealed class WifiDirectChatService : IDisposable
         _wifiPeersByDeviceId.Clear();
         _wifiPeersBySession.Clear();
         _blePeers.Clear();
+        _candidateDevices.Clear();
         _isStarted = false;
         _isConnecting = false;
         StatusChanged?.Invoke(this, "Wi-Fi Direct: Stopped");
@@ -156,9 +157,10 @@ public sealed class WifiDirectChatService : IDisposable
         var session = new ChatSessionPayload(peer.SessionId, peer.Nonce);
         _blePeers.Add(session);
 
-        if (_wifiPeersBySession.TryGetValue(session, out var wifiPeer))
+        // IEでの照合をやめたので、既知の全候補に接続を試みる
+        foreach (var deviceInfo in _candidateDevices.Values.ToList())
         {
-            await TryAutoConnectAsync(wifiPeer);
+            await TryAutoConnectCandidateAsync(deviceInfo);
         }
     }
 
@@ -215,15 +217,38 @@ public sealed class WifiDirectChatService : IDisposable
         _disposed = true;
     }
 
-    private async Task TryAutoConnectAsync(WifiDirectPeer peer)
+    private async Task TryAutoConnectCandidateAsync(DeviceInformation deviceInfo)
     {
-        if (!ShouldInitiateConnection(peer.Session))
-        {
-            StatusChanged?.Invoke(this, $"Wi-Fi Direct: waiting for peer {peer.Session.SessionId} to connect");
-            return;
-        }
+        if (IsConnected || _isConnecting) return;
 
-        await ConnectToPeerInternalAsync(peer, force: false);
+        // 自分自身は除外（MACアドレスで判定）
+        // ここでは単純に試みて、ハンドシェイクで不一致なら切断する
+
+        _isConnecting = true;
+        try
+        {
+            await EnsurePairedAsync(deviceInfo);
+            var device = await WiFiDirectDevice.FromIdAsync(deviceInfo.Id);
+            if (device is null) return;
+
+            SetWifiDirectDevice(device);
+            var endpointPairs = device.GetConnectionEndpointPairs();
+            if (endpointPairs.Count == 0) return;
+
+            await Task.Delay(2000);
+            var socket = new StreamSocket();
+            await socket.ConnectAsync(endpointPairs[0].RemoteHostName, ChatPort);
+            AttachChannel(socket, "Connected as client", isClient: true);
+        }
+        catch (Exception ex)
+        {
+            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct connect failed: {ex.Message}");
+            CloseConnection();
+        }
+        finally
+        {
+            _isConnecting = false;
+        }
     }
 
     private async Task ConnectToPeerInternalAsync(WifiDirectPeer peer, bool force)
@@ -263,7 +288,7 @@ public sealed class WifiDirectChatService : IDisposable
 
             var socket = new StreamSocket();
             await socket.ConnectAsync(endpointPairs[0].RemoteHostName, ChatPort);
-            AttachChannel(socket, "Connected as client");
+            AttachChannel(socket, "Connected as client", isClient: true);
         }
         catch (Exception ex)
         {
@@ -325,16 +350,55 @@ public sealed class WifiDirectChatService : IDisposable
 
     private void SocketListener_ConnectionReceived(StreamSocketListener sender, StreamSocketListenerConnectionReceivedEventArgs args)
     {
-        AttachChannel(args.Socket, "Connected as server");
+        AttachChannel(args.Socket, "Connected as server", isClient: false);
     }
 
-    private void AttachChannel(StreamSocket socket, string status)
+    private void AttachChannel(StreamSocket socket, string status, bool isClient)
     {
         _channel?.Dispose();
         _channel = new SocketMessageChannel(socket);
         StatusChanged?.Invoke(this, $"Wi-Fi Direct: {status}");
-        ConnectionStateChanged?.Invoke(this, true);
-        _ = ReceiveLoopAsync(_channel);
+        _ = HandshakeAndReceiveAsync(_channel, isClient);
+    }
+
+    private async Task HandshakeAndReceiveAsync(SocketMessageChannel channel, bool isClient)
+    {
+        try
+        {
+            var remoteSessionId = await channel.HandshakeAsync(_localSession.SessionId);
+            Debug.WriteLine($"[Handshake] remote={remoteSessionId}");
+
+            var expectedSession = _blePeers.FirstOrDefault(s => s.SessionId == remoteSessionId);
+            if (expectedSession == default)
+            {
+                StatusChanged?.Invoke(this, $"Wi-Fi Direct: unknown peer {remoteSessionId}, disconnecting");
+                CloseConnection();
+                return;
+            }
+
+            StatusChanged?.Invoke(this, $"Wi-Fi Direct: verified peer {remoteSessionId}");
+            ConnectionStateChanged?.Invoke(this, true);
+
+            // 通常の受信ループへ
+            while (_channel == channel)
+            {
+                var message = await channel.ReceiveAsync();
+                if (message is null) break;
+                MessageReceived?.Invoke(this, message);
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorOccurred?.Invoke(this, $"Handshake/Receive failed: {ex.Message}");
+        }
+        finally
+        {
+            if (_channel == channel)
+            {
+                CloseConnection();
+                StatusChanged?.Invoke(this, "Wi-Fi Direct: socket closed");
+            }
+        }
     }
 
     private async Task ReceiveLoopAsync(SocketMessageChannel channel)
@@ -408,13 +472,21 @@ public sealed class WifiDirectChatService : IDisposable
 
     private readonly HashSet<string> _pendingDeviceIds = new();
 
+    private readonly Dictionary<string, DeviceInformation> _candidateDevices = new();
+
     private async void Watcher_Added(DeviceWatcher sender, DeviceInformation args)
     {
         Debug.WriteLine($"[Watcher_Added] Id={args.Id} Name={args.Name}");
 
-        if (!await TryAddOrUpdateWifiPeer(args))
+        // IEチェックなしで候補として保持
+        _candidateDevices[args.Id] = args;
+        PeerDiscovered?.Invoke(this, new WifiDirectPeer(args, default));
+        StatusChanged?.Invoke(this, $"Wi-Fi Direct candidate: {args.Name}");
+
+        // BLEで発見済みピアがいれば接続を試みる
+        if (_blePeers.Count > 0)
         {
-            _pendingDeviceIds.Add(args.Id);
+            await TryAutoConnectCandidateAsync(args);
         }
     }
 
@@ -466,28 +538,16 @@ public sealed class WifiDirectChatService : IDisposable
 
     private async Task<bool> TryAddOrUpdateWifiPeer(DeviceInformation deviceInformation)
     {
-        if (!TryGetChatSession(deviceInformation, out var session))
+        _candidateDevices[deviceInformation.Id] = deviceInformation;
+        PeerDiscovered?.Invoke(this, new WifiDirectPeer(deviceInformation, default));
+        StatusChanged?.Invoke(this, $"Wi-Fi Direct candidate: {deviceInformation.Name}");
+
+        if (_blePeers.Count > 0)
         {
-            return false;
+            await TryAutoConnectCandidateAsync(deviceInformation);
         }
 
-        if (session == _localSession)
-        {
-            return false;
-        }
-
-        var peer = new WifiDirectPeer(deviceInformation, session);
-        _wifiPeersByDeviceId[deviceInformation.Id] = peer;
-        _wifiPeersBySession[session] = peer;
-        PeerDiscovered?.Invoke(this, peer);
-        StatusChanged?.Invoke(this, $"Wi-Fi Direct peer found: {session.SessionId}");
-
-        if (_blePeers.Contains(session))
-        {
-            await TryAutoConnectAsync(peer);
-        }
-
-        return true;  // ← 追加（値を返さないコードパスのエラーを解消）
+        return true;
     }
 
     private static bool TryGetChatSession(
