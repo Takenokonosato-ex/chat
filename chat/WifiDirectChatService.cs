@@ -406,9 +406,16 @@ public sealed class WifiDirectChatService : IDisposable
         return _localSession.Nonce < remoteSession.Nonce;
     }
 
-    private void Watcher_Added(DeviceWatcher sender, DeviceInformation args)
+    private readonly HashSet<string> _pendingDeviceIds = new();
+
+    private async void Watcher_Added(DeviceWatcher sender, DeviceInformation args)
     {
-        TryAddOrUpdateWifiPeer(args);
+        Debug.WriteLine($"[Watcher_Added] Id={args.Id} Name={args.Name}");
+
+        if (!await TryAddOrUpdateWifiPeer(args))
+        {
+            _pendingDeviceIds.Add(args.Id);
+        }
     }
 
     private async void Watcher_Updated(DeviceWatcher sender, DeviceInformationUpdate args)
@@ -418,24 +425,28 @@ public sealed class WifiDirectChatService : IDisposable
             peer.Update(args);
             PeerDiscovered?.Invoke(this, peer);
         }
-        else
+        else if (_pendingDeviceIds.Contains(args.Id))
         {
             try
             {
                 var deviceInfo = await DeviceInformation.CreateFromIdAsync(
-                    args.Id,
-                    DeviceProperties);
-                TryAddOrUpdateWifiPeer(deviceInfo);
+                    args.Id, DeviceProperties);
+                Debug.WriteLine($"[Watcher_Updated retry] Name={deviceInfo.Name}");
+                if (await TryAddOrUpdateWifiPeer(deviceInfo))  // await を追加
+                {
+                    _pendingDeviceIds.Remove(args.Id);
+                }
             }
             catch (Exception ex)
             {
-                ErrorOccurred?.Invoke(this, $"Wi-Fi Direct update failed: {ex.Message}");
+                Debug.WriteLine($"[Watcher_Updated retry failed] {ex.Message}");
             }
         }
     }
 
     private void Watcher_Removed(DeviceWatcher sender, DeviceInformationUpdate args)
     {
+        _pendingDeviceIds.Remove(args.Id);  // 既存処理に追加
         if (_wifiPeersByDeviceId.Remove(args.Id, out var peer))
         {
             _wifiPeersBySession.Remove(peer.Session);
@@ -453,16 +464,16 @@ public sealed class WifiDirectChatService : IDisposable
         StatusChanged?.Invoke(this, "Wi-Fi Direct: watcher stopped");
     }
 
-    private async void TryAddOrUpdateWifiPeer(DeviceInformation deviceInformation)
+    private async Task<bool> TryAddOrUpdateWifiPeer(DeviceInformation deviceInformation)
     {
         if (!TryGetChatSession(deviceInformation, out var session))
         {
-            return;
+            return false;
         }
 
         if (session == _localSession)
         {
-            return;
+            return false;
         }
 
         var peer = new WifiDirectPeer(deviceInformation, session);
@@ -475,6 +486,8 @@ public sealed class WifiDirectChatService : IDisposable
         {
             await TryAutoConnectAsync(peer);
         }
+
+        return true;  // ← 追加（値を返さないコードパスのエラーを解消）
     }
 
     private static bool TryGetChatSession(
