@@ -50,7 +50,7 @@ public sealed class WifiDirectChatService : IDisposable
 
     private void LogDebug(string msg)
     {
-        LogDebug(msg);
+        Debug.WriteLine(msg);
         MessageReceived?.Invoke(this, $"[System] {msg}");
     }
 
