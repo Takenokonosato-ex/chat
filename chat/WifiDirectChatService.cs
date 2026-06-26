@@ -48,6 +48,12 @@ public sealed class WifiDirectChatService : IDisposable
 
     public bool IsConnected => _channel is not null;
 
+    private void LogDebug(string msg)
+    {
+        Debug.WriteLine(msg);
+        MessageReceived?.Invoke(this, $"[System] {msg}");
+    }
+
     public async Task StartAsync()
     {
         ThrowIfDisposed();
@@ -57,23 +63,15 @@ public sealed class WifiDirectChatService : IDisposable
             return;
         }
 
+        LogDebug("StartAsync: Initializing Wi-Fi Direct publisher...");
         _publisher = new WiFiDirectAdvertisementPublisher();
         _publisher.StatusChanged += Publisher_StatusChanged;
-        _publisher.Advertisement.ListenStateDiscoverability = WiFiDirectAdvertisementListenStateDiscoverability.Intensive;
+        // Intensive causes some Wi-Fi drivers to immediately Abort. Using Normal or default.
+        _publisher.Advertisement.ListenStateDiscoverability = WiFiDirectAdvertisementListenStateDiscoverability.Normal;
 
-        try
-        {
-            _connectionListener = new WiFiDirectConnectionListener();
-            _connectionListener.ConnectionRequested += ConnectionListener_ConnectionRequested;
-        }
-        catch (Exception ex)
-        {
-            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct listener start failed: {ex.Message}");
-            Stop();
-            return;
-        }
-
+        LogDebug("StartAsync: Creating DeviceWatcher...");
         var selector = WiFiDirectDevice.GetDeviceSelector(WiFiDirectDeviceSelectorType.AssociationEndpoint);
+        LogDebug($"StartAsync: DeviceSelector is '{selector}'");
         _watcher = DeviceInformation.CreateWatcher(selector, DeviceProperties);
         _watcher.Added += Watcher_Added;
         _watcher.Updated += Watcher_Updated;
@@ -83,13 +81,24 @@ public sealed class WifiDirectChatService : IDisposable
 
         try
         {
+            LogDebug("StartAsync: Starting publisher...");
             _publisher.Start();
+            await Task.Delay(500); // Wait for publisher to stabilize
+
+            LogDebug("StartAsync: Starting watcher...");
             _watcher.Start();
+
+            LogDebug("StartAsync: Creating WiFiDirectConnectionListener...");
+            _connectionListener = new WiFiDirectConnectionListener();
+            _connectionListener.ConnectionRequested += ConnectionListener_ConnectionRequested;
+
             _isStarted = true;
+            LogDebug($"StartAsync: Started successfully. Publisher Status={_publisher.Status}");
             StatusChanged?.Invoke(this, $"Wi-Fi Direct: Started ({_publisher.Status})");
         }
         catch (Exception ex)
         {
+            LogDebug($"StartAsync: Start failed: {ex.Message}");
             ErrorOccurred?.Invoke(this, $"Wi-Fi Direct start failed: {ex.Message}");
             Stop();
         }
@@ -264,6 +273,7 @@ public sealed class WifiDirectChatService : IDisposable
                 catch (Exception ex)
                 {
                     Debug.WriteLine($"[Wi-Fi Direct] Connection setup failed: {ex}");
+                    ErrorOccurred?.Invoke(this, $"EnsurePairedエラー: {ex.Message}");
                     tcs.SetException(ex);
                 }
             });
@@ -535,10 +545,12 @@ public sealed class WifiDirectChatService : IDisposable
 
     private async void Watcher_Added(DeviceWatcher sender, DeviceInformation args)
     {
-        Debug.WriteLine($"[Watcher_Added] Id={args.Id} Name={args.Name}");
+        LogDebug($"Watcher_Added: Id={args.Id} Name={args.Name}");
+        StatusChanged?.Invoke(this, $"Wi-Fi Direct: 見つけたデバイス: {args.Name}");
 
         if (TryMatchBlePeer(args.Name, out var session))
         {
+            LogDebug($"Watcher_Added: Matched BLE peer! Session={session.SessionId}");
             var peer = new WifiDirectPeer(args, session);
             _wifiPeersByDeviceId[args.Id] = peer;
             _wifiPeersBySession[session] = peer;
@@ -551,12 +563,13 @@ public sealed class WifiDirectChatService : IDisposable
         {
             // BLEでまだ発見されていない場合はキューに追加してUpdatedで再試行
             _pendingDeviceIds.Add(args.Id);
-            Debug.WriteLine($"[Watcher_Added] BLE peer not matched yet, queued: {args.Name}");
+            LogDebug($"Watcher_Added: No BLE match yet. Queued. Name={args.Name}");
         }
     }
 
     private async void Watcher_Updated(DeviceWatcher sender, DeviceInformationUpdate args)
     {
+        LogDebug($"Watcher_Updated: Id={args.Id}");
         if (_wifiPeersByDeviceId.TryGetValue(args.Id, out var existingPeer))
         {
             existingPeer.Update(args);
@@ -590,6 +603,7 @@ public sealed class WifiDirectChatService : IDisposable
 
     private void Watcher_Removed(DeviceWatcher sender, DeviceInformationUpdate args)
     {
+        LogDebug($"Watcher_Removed: Id={args.Id}");
         _pendingDeviceIds.Remove(args.Id);  // 既存処理に追加
         if (_wifiPeersByDeviceId.Remove(args.Id, out var peer))
         {
@@ -600,23 +614,24 @@ public sealed class WifiDirectChatService : IDisposable
 
     private void Watcher_EnumerationCompleted(DeviceWatcher sender, object args)
     {
+        LogDebug("Watcher_EnumerationCompleted: Finished initial scan.");
         StatusChanged?.Invoke(this, "Wi-Fi Direct: enumeration completed");
     }
 
     private void Watcher_Stopped(DeviceWatcher sender, object args)
     {
+        LogDebug("Watcher_Stopped");
         StatusChanged?.Invoke(this, "Wi-Fi Direct: watcher stopped");
     }
 
-
-
-
     private void Publisher_StatusChanged(WiFiDirectAdvertisementPublisher sender, WiFiDirectAdvertisementPublisherStatusChangedEventArgs args)
     {
+        LogDebug($"Publisher_StatusChanged: {args.Status}");
         StatusChanged?.Invoke(this, $"Wi-Fi Direct publisher: {args.Status}");
 
         if (args.Error != WiFiDirectError.Success)
         {
+            LogDebug($"Publisher_StatusChanged: ERROR {args.Error}");
             ErrorOccurred?.Invoke(this, $"Wi-Fi Direct publisher error: {args.Error}. Mobile Hotspot が ON の場合は OFF にしてください。");
         }
     }
