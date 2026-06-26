@@ -39,7 +39,7 @@ namespace WifiDirectTest
             Console.WriteLine("Wi-Fi Directのパブリッシュを開始します...");
 
             var publisher = new WiFiDirectAdvertisementPublisher();
-            publisher.Advertisement.ListenStateDiscoverability = WiFiDirectAdvertisementListenStateDiscoverability.Intensive;
+            publisher.Advertisement.ListenStateDiscoverability = WiFiDirectAdvertisementListenStateDiscoverability.Normal;
             
             var listener = new WiFiDirectConnectionListener();
             listener.ConnectionRequested += async (s, e) =>
@@ -192,20 +192,12 @@ namespace WifiDirectTest
             void CustomPairing_PairingRequested(DeviceInformationCustomPairing sender, DevicePairingRequestedEventArgs args)
             {
                 Console.WriteLine($"[ペアリング] リクエスト受信: {args.PairingKind}");
-                if (args.PairingKind == DevicePairingKinds.ProvidePin)
-                {
-                    args.Accept("0000");
-                }
-                else
-                {
-                    args.Accept();
-                }
+                args.Accept();
             }
 
             customPairing.PairingRequested += CustomPairing_PairingRequested;
 
-            var result = await customPairing.PairAsync(
-                DevicePairingKinds.ConfirmOnly | DevicePairingKinds.ProvidePin | DevicePairingKinds.DisplayPin);
+            var result = await customPairing.PairAsync(DevicePairingKinds.ConfirmOnly);
 
             customPairing.PairingRequested -= CustomPairing_PairingRequested;
 
