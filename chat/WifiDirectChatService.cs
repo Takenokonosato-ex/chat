@@ -267,7 +267,18 @@ public sealed class WifiDirectChatService : IDisposable
                     Debug.WriteLine($"[Wi-Fi Direct] EnsurePairedAsync to {peer.DeviceInformation.Name}");
                     await EnsurePairedAsync(peer.DeviceInformation, connectionParams);
                     Debug.WriteLine($"[Wi-Fi Direct] Paired. Creating WiFiDirectDevice from ID.");
-                    var d = await WiFiDirectDevice.FromIdAsync(peer.DeviceInformation.Id);
+                    WiFiDirectDevice? d = null;
+                    try
+                    {
+                        d = await WiFiDirectDevice.FromIdAsync(peer.DeviceInformation.Id);
+                    }
+                    catch (Exception ex) when (ex.HResult == unchecked((int)0x80070288))
+                    {
+                        Debug.WriteLine("[Wi-Fi Direct] Stale pairing detected. Unpairing...");
+                        await peer.DeviceInformation.Pairing.UnpairAsync();
+                        await EnsurePairedAsync(peer.DeviceInformation, connectionParams);
+                        d = await WiFiDirectDevice.FromIdAsync(peer.DeviceInformation.Id);
+                    }
                     tcs.SetResult(d);
                 }
                 catch (Exception ex)
@@ -296,10 +307,29 @@ public sealed class WifiDirectChatService : IDisposable
             Debug.WriteLine($"[Wi-Fi Direct] Endpoints found. Connecting to {endpointPairs[0].RemoteHostName}:{ChatPort}");
             await Task.Delay(2000);
 
-            var socket = new StreamSocket();
-            await socket.ConnectAsync(endpointPairs[0].RemoteHostName, ChatPort);
-            Debug.WriteLine($"[Wi-Fi Direct] Socket connected to {endpointPairs[0].RemoteHostName}");
-            AttachChannel(socket, "Connected as client", isClient: true);
+            try
+            {
+                _socketListener = new StreamSocketListener();
+                _socketListener.ConnectionReceived += SocketListener_ConnectionReceived;
+                await _socketListener.BindEndpointAsync(endpointPairs[0].LocalHostName, ChatPort);
+                Debug.WriteLine($"[Wi-Fi Direct] Listening on {endpointPairs[0].LocalHostName}:{ChatPort}");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[Wi-Fi Direct] Failed to bind listener: {ex.Message}");
+            }
+
+            try
+            {
+                var socket = new StreamSocket();
+                await socket.ConnectAsync(endpointPairs[0].RemoteHostName, ChatPort);
+                Debug.WriteLine($"[Wi-Fi Direct] Socket connected to {endpointPairs[0].RemoteHostName}");
+                AttachChannel(socket, "Connected as client", isClient: true);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[Wi-Fi Direct] Failed to connect as client: {ex.Message}");
+            }
         }
         catch (Exception ex)
         {
@@ -339,7 +369,18 @@ public sealed class WifiDirectChatService : IDisposable
                     Debug.WriteLine($"[Wi-Fi Direct] EnsurePairedAsync (Listener) to {request.DeviceInformation.Name}");
                     await EnsurePairedAsync(request.DeviceInformation, connectionParams);
                     Debug.WriteLine($"[Wi-Fi Direct] Paired (Listener). Creating WiFiDirectDevice from ID.");
-                    var d = await WiFiDirectDevice.FromIdAsync(request.DeviceInformation.Id);
+                    WiFiDirectDevice? d = null;
+                    try
+                    {
+                        d = await WiFiDirectDevice.FromIdAsync(request.DeviceInformation.Id);
+                    }
+                    catch (Exception ex) when (ex.HResult == unchecked((int)0x80070288))
+                    {
+                        Debug.WriteLine("[Wi-Fi Direct] Stale pairing detected. Unpairing...");
+                        await request.DeviceInformation.Pairing.UnpairAsync();
+                        await EnsurePairedAsync(request.DeviceInformation, connectionParams);
+                        d = await WiFiDirectDevice.FromIdAsync(request.DeviceInformation.Id);
+                    }
                     tcs.SetResult(d);
                 }
                 catch (Exception ex)
@@ -364,10 +405,30 @@ public sealed class WifiDirectChatService : IDisposable
                 return;
             }
 
-            _socketListener = new StreamSocketListener();
-            _socketListener.ConnectionReceived += SocketListener_ConnectionReceived;
-            await _socketListener.BindEndpointAsync(endpointPairs[0].LocalHostName, ChatPort);
-            StatusChanged?.Invoke(this, $"Wi-Fi Direct: listening on {endpointPairs[0].LocalHostName}:{ChatPort}");
+            await Task.Delay(2000);
+
+            try
+            {
+                _socketListener = new StreamSocketListener();
+                _socketListener.ConnectionReceived += SocketListener_ConnectionReceived;
+                await _socketListener.BindEndpointAsync(endpointPairs[0].LocalHostName, ChatPort);
+                StatusChanged?.Invoke(this, $"Wi-Fi Direct: listening on {endpointPairs[0].LocalHostName}:{ChatPort}");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[Wi-Fi Direct] Failed to bind listener: {ex.Message}");
+            }
+
+            try
+            {
+                var socket = new StreamSocket();
+                await socket.ConnectAsync(endpointPairs[0].RemoteHostName, ChatPort);
+                AttachChannel(socket, "Connected as client", isClient: true);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[Wi-Fi Direct] Failed to connect as client: {ex.Message}");
+            }
         }
         catch (Exception ex)
         {
@@ -387,7 +448,12 @@ public sealed class WifiDirectChatService : IDisposable
 
     private void AttachChannel(StreamSocket socket, string status, bool isClient)
     {
-        _channel?.Dispose();
+        if (_channel != null)
+        {
+            socket.Dispose();
+            return;
+        }
+
         _channel = new SocketMessageChannel(socket);
         StatusChanged?.Invoke(this, $"Wi-Fi Direct: {status}");
         _ = HandshakeAndReceiveAsync(_channel, isClient);
