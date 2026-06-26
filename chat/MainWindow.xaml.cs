@@ -40,7 +40,7 @@ namespace chat
         {
             InitializeComponent();
 
-            _wifiDirectChat = new WifiDirectChatService(_bleDiscovery.LocalSession);
+            _wifiDirectChat = new WifiDirectChatService(_bleDiscovery.LocalSession, this.DispatcherQueue);
             PeerList.ItemsSource = _peers;
             ChatList.ItemsSource = _chatMessages;
             LocalSessionText.Text = _bleDiscovery.SessionId.ToString();

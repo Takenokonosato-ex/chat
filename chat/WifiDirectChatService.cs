@@ -8,6 +8,7 @@ using Windows.Devices.Enumeration;
 using Windows.Devices.WiFiDirect;
 using Windows.Networking;
 using Windows.Networking.Sockets;
+using Microsoft.UI.Dispatching;
 
 namespace chat;
 
@@ -17,6 +18,7 @@ public sealed class WifiDirectChatService : IDisposable
     private static readonly string[] DeviceProperties = Array.Empty<string>();
 
     private readonly ChatSessionPayload _localSession;
+    private readonly DispatcherQueue _dispatcherQueue;
     private readonly Dictionary<string, WifiDirectPeer> _wifiPeersByDeviceId = new();
     private readonly Dictionary<ChatSessionPayload, WifiDirectPeer> _wifiPeersBySession = new();
     private readonly Dictionary<ChatSessionPayload, BlePeer> _blePeers = new();
@@ -30,9 +32,10 @@ public sealed class WifiDirectChatService : IDisposable
     private bool _isConnecting;
     private bool _disposed;
 
-    public WifiDirectChatService(ChatSessionPayload localSession)
+    public WifiDirectChatService(ChatSessionPayload localSession, DispatcherQueue dispatcherQueue)
     {
         _localSession = localSession;
+        _dispatcherQueue = dispatcherQueue;
     }
 
     public event EventHandler<string>? StatusChanged;
@@ -243,8 +246,22 @@ public sealed class WifiDirectChatService : IDisposable
 
         try
         {
-            await EnsurePairedAsync(peer.DeviceInformation);
-            var device = await WiFiDirectDevice.FromIdAsync(peer.DeviceInformation.Id);
+            var tcs = new TaskCompletionSource<WiFiDirectDevice?>();
+            _dispatcherQueue.TryEnqueue(async () =>
+            {
+                try
+                {
+                    await EnsurePairedAsync(peer.DeviceInformation);
+                    var d = await WiFiDirectDevice.FromIdAsync(peer.DeviceInformation.Id);
+                    tcs.SetResult(d);
+                }
+                catch (Exception ex)
+                {
+                    tcs.SetException(ex);
+                }
+            });
+
+            var device = await tcs.Task;
             if (device is null)
             {
                 ErrorOccurred?.Invoke(this, "Wi-Fi Direct connection failed: device was null.");
@@ -291,8 +308,22 @@ public sealed class WifiDirectChatService : IDisposable
 
         try
         {
-            await EnsurePairedAsync(request.DeviceInformation);
-            var device = await WiFiDirectDevice.FromIdAsync(request.DeviceInformation.Id);
+            var tcs = new TaskCompletionSource<WiFiDirectDevice?>();
+            _dispatcherQueue.TryEnqueue(async () =>
+            {
+                try
+                {
+                    await EnsurePairedAsync(request.DeviceInformation);
+                    var d = await WiFiDirectDevice.FromIdAsync(request.DeviceInformation.Id);
+                    tcs.SetResult(d);
+                }
+                catch (Exception ex)
+                {
+                    tcs.SetException(ex);
+                }
+            });
+
+            var device = await tcs.Task;
             if (device is null)
             {
                 ErrorOccurred?.Invoke(this, "Wi-Fi Direct accept failed: device was null.");
