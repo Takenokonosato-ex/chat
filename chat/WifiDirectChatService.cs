@@ -427,10 +427,30 @@ public sealed class WifiDirectChatService : IDisposable
             return;
         }
 
-        var result = await deviceInformation.Pairing.PairAsync();
+        var customPairing = deviceInformation.Pairing.Custom;
+        customPairing.PairingRequested += CustomPairing_PairingRequested;
+
+        var result = await customPairing.PairAsync(
+            DevicePairingKinds.ConfirmOnly | DevicePairingKinds.ProvidePin | DevicePairingKinds.DisplayPin);
+
+        customPairing.PairingRequested -= CustomPairing_PairingRequested;
+
         if (result.Status is not DevicePairingResultStatus.Paired and not DevicePairingResultStatus.AlreadyPaired)
         {
             throw new InvalidOperationException($"Pairing failed: {result.Status}");
+        }
+    }
+
+    private void CustomPairing_PairingRequested(DeviceInformationCustomPairing sender, DevicePairingRequestedEventArgs args)
+    {
+        // PIN入力をスキップして自動承認する
+        if (args.PairingKind == DevicePairingKinds.ProvidePin)
+        {
+            args.Accept("0000"); // 一部のドライバではPINが必要。固定PIN
+        }
+        else
+        {
+            args.Accept();
         }
     }
 
