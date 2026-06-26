@@ -48,15 +48,7 @@ public readonly record struct ChatSessionPayload(Guid SessionId, uint Nonce)
         return writer.DetachBuffer();
     }
 
-    public WiFiDirectInformationElement ToWifiDirectInformationElement()
-    {
-        return new WiFiDirectInformationElement
-        {
-            Oui = CryptographicBuffer.CreateFromByteArray(WifiDirectOui),
-            OuiType = WifiDirectOuiType,
-            Value = ToBuffer()
-        };
-    }
+
 
     public static bool TryParse(IBuffer payload, out ChatSessionPayload session)
     {

@@ -14,10 +14,7 @@ namespace chat;
 public sealed class WifiDirectChatService : IDisposable
 {
     private const string ChatPort = "50001";
-    private static readonly string[] DeviceProperties =
-    {
-        "System.Devices.WiFiDirect.InformationElements"
-    };
+    private static readonly string[] DeviceProperties = Array.Empty<string>();
 
     private readonly ChatSessionPayload _localSession;
     private readonly Dictionary<string, WifiDirectPeer> _wifiPeersByDeviceId = new();
@@ -60,7 +57,6 @@ public sealed class WifiDirectChatService : IDisposable
         _publisher = new WiFiDirectAdvertisementPublisher();
         _publisher.StatusChanged += Publisher_StatusChanged;
         _publisher.Advertisement.ListenStateDiscoverability = WiFiDirectAdvertisementListenStateDiscoverability.Intensive;
-        _publisher.Advertisement.InformationElements.Add(_localSession.ToWifiDirectInformationElement());
 
         try
         {
@@ -133,7 +129,11 @@ public sealed class WifiDirectChatService : IDisposable
             _publisher.StatusChanged -= Publisher_StatusChanged;
             try
             {
-                _publisher.Stop();
+                if (_publisher.Status == WiFiDirectAdvertisementPublisherStatus.Started ||
+                    _publisher.Status == WiFiDirectAdvertisementPublisherStatus.Created)
+                {
+                    _publisher.Stop();
+                }
             }
             catch (Exception ex)
             {
