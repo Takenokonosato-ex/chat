@@ -22,11 +22,14 @@ namespace chat
         private string _wifiServiceStatus = "Stopped";
         private string _wifiConnectionStatus = "未接続";
         private bool _isUpdatingUI;
+        private bool _isDiscovering;
 
         // Status indicator brushes
         private static readonly SolidColorBrush _successBrush = new(Color.FromArgb(255, 87, 242, 135));
         private static readonly SolidColorBrush _errorBrush = new(Color.FromArgb(255, 237, 66, 69));
         private static readonly SolidColorBrush _inactiveBrush = new(Color.FromArgb(255, 148, 155, 164));
+        private static readonly SolidColorBrush _accentBrush = new(Color.FromArgb(255, 88, 101, 242));
+        private static readonly SolidColorBrush _dangerBtnBrush = new(Color.FromArgb(255, 218, 55, 60));
 
         // Pulse animations for status dots
         private Storyboard? _blePulse;
@@ -136,7 +139,38 @@ namespace chat
         }
 
         // ─────────────────────────────────────────────
-        // Toggle / Button Handlers
+        // Discovery (One-tap start/stop)
+        // ─────────────────────────────────────────────
+
+        private async void DiscoveryButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_isDiscovering)
+                StopDiscovery();
+            else
+                await StartDiscoveryAsync();
+        }
+
+        private async Task StartDiscoveryAsync()
+        {
+            ClearError();
+            _bleDiscovery.StartAdvertising();
+            _bleDiscovery.StartScanning();
+            await _wifiDirectChat.StartAsync();
+            _isDiscovering = true;
+            SyncUI();
+        }
+
+        private void StopDiscovery()
+        {
+            _bleDiscovery.StopAdvertising();
+            _bleDiscovery.StopScanning();
+            _wifiDirectChat.Stop();
+            _isDiscovering = false;
+            SyncUI();
+        }
+
+        // ─────────────────────────────────────────────
+        // Advanced Toggle Handlers
         // ─────────────────────────────────────────────
 
         private void AdvertiseToggle_Toggled(object sender, RoutedEventArgs e)
@@ -171,6 +205,10 @@ namespace chat
                 _wifiDirectChat.Stop();
             SyncUI();
         }
+
+        // ─────────────────────────────────────────────
+        // Connection Handlers
+        // ─────────────────────────────────────────────
 
         private async void ConnectWifiButton_Click(object sender, RoutedEventArgs e)
         {
@@ -339,8 +377,8 @@ namespace chat
             // — BLE status indicator —
             var bleActive = _bleDiscovery.IsAdvertising || _bleDiscovery.IsScanning;
             BleStatusLabel.Text = bleActive
-                ? $"{_advertisingStatus} / {_scanningStatus}"
-                : "停止中";
+                ? $"BLE: {_advertisingStatus} / {_scanningStatus}"
+                : "BLE: 停止中";
             BleStatusDot.Fill = bleActive ? _successBrush : _inactiveBrush;
 
             if (bleActive)
@@ -355,9 +393,10 @@ namespace chat
 
             // — Wi-Fi Direct status indicator —
             var wifiActive = _wifiDirectChat.IsStarted;
+            var connected = _wifiDirectChat.IsConnected;
             WifiStatusLabel.Text = wifiActive
-                ? $"{_wifiServiceStatus} / {_wifiConnectionStatus}"
-                : "停止中";
+                ? $"Wi-Fi: {_wifiServiceStatus} / {_wifiConnectionStatus}"
+                : "Wi-Fi Direct: 停止中";
             WifiStatusDot.Fill = wifiActive ? _successBrush : _inactiveBrush;
 
             if (wifiActive)
@@ -371,7 +410,6 @@ namespace chat
             }
 
             // — Connection status (chat header) —
-            var connected = _wifiDirectChat.IsConnected;
             ConnectionStatusLabel.Text = connected ? "接続済み" : "未接続";
             ConnectionStatusDot.Fill = connected ? _successBrush : _errorBrush;
 
@@ -388,6 +426,13 @@ namespace chat
 
         private void SyncUI()
         {
+            // Discovery button
+            _isDiscovering = _bleDiscovery.IsAdvertising || _bleDiscovery.IsScanning || _wifiDirectChat.IsStarted;
+            DiscoveryButtonText.Text = _isDiscovering ? "探索停止" : "探索開始";
+            DiscoveryButtonIcon.Glyph = _isDiscovering ? "\uE711" : "\uE11A";
+            DiscoveryButton.Background = _isDiscovering ? _dangerBtnBrush : _accentBrush;
+
+            // Advanced toggles
             _isUpdatingUI = true;
             AdvertiseToggle.IsOn = _bleDiscovery.IsAdvertising;
             ScanToggle.IsOn = _bleDiscovery.IsScanning;

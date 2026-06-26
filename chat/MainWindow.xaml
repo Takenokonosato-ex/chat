@@ -116,77 +116,51 @@
                         <!-- ─── Divider ─── -->
                         <Border Height="1" Background="{ThemeResource DividerBrush}" Margin="0,0,0,10"/>
 
-                        <!-- ── BLUETOOTH Section ── -->
-                        <TextBlock Text="BLUETOOTH" FontSize="11" FontWeight="Bold"
-                                   Foreground="{ThemeResource SectionHeaderBrush}"
-                                   Margin="4,0,0,8" CharacterSpacing="80"/>
+                        <!-- ══ Main Discovery Button ══ -->
+                        <Button x:Name="DiscoveryButton"
+                                Click="DiscoveryButton_Click"
+                                HorizontalAlignment="Stretch" Margin="0,0,0,8"
+                                Background="{ThemeResource AccentBrush}"
+                                Foreground="White" CornerRadius="8" Padding="0,12"
+                                HorizontalContentAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <FontIcon x:Name="DiscoveryButtonIcon" Glyph="&#xE11A;" FontSize="16"/>
+                                <TextBlock x:Name="DiscoveryButtonText" Text="探索開始"
+                                           FontSize="14" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </Button>
 
-                        <!-- Advertise Toggle -->
-                        <Border CornerRadius="6" Padding="10,6" Margin="0,0,0,2">
-                            <Grid ColumnDefinitions="Auto,*,Auto">
-                                <FontIcon Glyph="&#xEC05;" FontSize="15"
-                                          Foreground="{ThemeResource SecondaryTextBrush}"
-                                          VerticalAlignment="Center"/>
-                                <TextBlock Grid.Column="1" Text="Advertise" Margin="12,0"
-                                           VerticalAlignment="Center" FontSize="13"
-                                           Foreground="{ThemeResource PrimaryTextBrush}"/>
-                                <ToggleSwitch Grid.Column="2" x:Name="AdvertiseToggle"
-                                              OnContent="" OffContent="" MinWidth="0"
-                                              Toggled="AdvertiseToggle_Toggled"/>
-                            </Grid>
-                        </Border>
-
-                        <!-- Scan Toggle -->
-                        <Border CornerRadius="6" Padding="10,6" Margin="0,0,0,2">
-                            <Grid ColumnDefinitions="Auto,*,Auto">
-                                <FontIcon Glyph="&#xE11A;" FontSize="15"
-                                          Foreground="{ThemeResource SecondaryTextBrush}"
-                                          VerticalAlignment="Center"/>
-                                <TextBlock Grid.Column="1" Text="Scan" Margin="12,0"
-                                           VerticalAlignment="Center" FontSize="13"
-                                           Foreground="{ThemeResource PrimaryTextBrush}"/>
-                                <ToggleSwitch Grid.Column="2" x:Name="ScanToggle"
-                                              OnContent="" OffContent="" MinWidth="0"
-                                              Toggled="ScanToggle_Toggled"/>
-                            </Grid>
-                        </Border>
-
-                        <!-- BLE Status Indicator -->
-                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="10,4,0,2">
-                            <Ellipse x:Name="BleStatusDot" Width="8" Height="8"
-                                     Fill="{ThemeResource SecondaryTextBrush}"
-                                     VerticalAlignment="Center"/>
-                            <TextBlock x:Name="BleStatusLabel" Text="停止中" FontSize="11"
-                                       Foreground="{ThemeResource SecondaryTextBrush}"/>
+                        <!-- Status Indicators -->
+                        <StackPanel Spacing="6" Margin="4,0,0,0">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Ellipse x:Name="BleStatusDot" Width="8" Height="8"
+                                         Fill="{ThemeResource SecondaryTextBrush}"
+                                         VerticalAlignment="Center"/>
+                                <TextBlock x:Name="BleStatusLabel" Text="BLE: 停止中" FontSize="11"
+                                           Foreground="{ThemeResource SecondaryTextBrush}"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Ellipse x:Name="WifiStatusDot" Width="8" Height="8"
+                                         Fill="{ThemeResource SecondaryTextBrush}"
+                                         VerticalAlignment="Center"/>
+                                <TextBlock x:Name="WifiStatusLabel" Text="Wi-Fi Direct: 停止中" FontSize="11"
+                                           Foreground="{ThemeResource SecondaryTextBrush}"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
                         </StackPanel>
 
                         <!-- ─── Divider ─── -->
-                        <Border Height="1" Background="{ThemeResource DividerBrush}" Margin="0,12,0,10"/>
+                        <Border Height="1" Background="{ThemeResource DividerBrush}" Margin="0,10,0,8"/>
 
-                        <!-- ── WI-FI DIRECT Section ── -->
-                        <TextBlock Text="WI-FI DIRECT" FontSize="11" FontWeight="Bold"
+                        <!-- ── CONNECTION Section ── -->
+                        <TextBlock Text="CONNECTION" FontSize="11" FontWeight="Bold"
                                    Foreground="{ThemeResource SectionHeaderBrush}"
-                                   Margin="4,0,0,8" CharacterSpacing="80"/>
-
-                        <!-- Service Toggle -->
-                        <Border CornerRadius="6" Padding="10,6" Margin="0,0,0,2">
-                            <Grid ColumnDefinitions="Auto,*,Auto">
-                                <FontIcon Glyph="&#xE701;" FontSize="15"
-                                          Foreground="{ThemeResource SecondaryTextBrush}"
-                                          VerticalAlignment="Center"/>
-                                <TextBlock Grid.Column="1" Text="Service" Margin="12,0"
-                                           VerticalAlignment="Center" FontSize="13"
-                                           Foreground="{ThemeResource PrimaryTextBrush}"/>
-                                <ToggleSwitch Grid.Column="2" x:Name="WifiServiceToggle"
-                                              OnContent="" OffContent="" MinWidth="0"
-                                              Toggled="WifiServiceToggle_Toggled"/>
-                            </Grid>
-                        </Border>
+                                   Margin="4,0,0,6" CharacterSpacing="80"/>
 
                         <!-- Connect Button -->
                         <Button x:Name="ConnectWifiButton" IsEnabled="False"
                                 Click="ConnectWifiButton_Click"
-                                HorizontalAlignment="Stretch" Margin="0,6"
+                                HorizontalAlignment="Stretch" Margin="0,2"
                                 Background="{ThemeResource ButtonSuccessBrush}"
                                 Foreground="White" CornerRadius="6" Padding="0,8"
                                 HorizontalContentAlignment="Center">
@@ -209,18 +183,61 @@
                             </StackPanel>
                         </Button>
 
-                        <!-- WiFi Status Indicator -->
-                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="10,6,0,2">
-                            <Ellipse x:Name="WifiStatusDot" Width="8" Height="8"
-                                     Fill="{ThemeResource SecondaryTextBrush}"
-                                     VerticalAlignment="Center"/>
-                            <TextBlock x:Name="WifiStatusLabel" Text="停止中" FontSize="11"
-                                       Foreground="{ThemeResource SecondaryTextBrush}"
-                                       TextTrimming="CharacterEllipsis"/>
-                        </StackPanel>
+                        <!-- ─── Divider ─── -->
+                        <Border Height="1" Background="{ThemeResource DividerBrush}" Margin="0,10,0,8"/>
+
+                        <!-- ── Advanced Settings (Expander) ── -->
+                        <Expander Header="詳細設定" HorizontalAlignment="Stretch"
+                                  HorizontalContentAlignment="Stretch"
+                                  Padding="0" IsExpanded="False">
+                            <StackPanel Spacing="4" Padding="4,8">
+                                <!-- Advertise Toggle -->
+                                <Border CornerRadius="6" Padding="8,4">
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <FontIcon Glyph="&#xEC05;" FontSize="14"
+                                                  Foreground="{ThemeResource SecondaryTextBrush}"
+                                                  VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="BLE Advertise" Margin="10,0"
+                                                   VerticalAlignment="Center" FontSize="12"
+                                                   Foreground="{ThemeResource PrimaryTextBrush}"/>
+                                        <ToggleSwitch Grid.Column="2" x:Name="AdvertiseToggle"
+                                                      OnContent="" OffContent="" MinWidth="0"
+                                                      Toggled="AdvertiseToggle_Toggled"/>
+                                    </Grid>
+                                </Border>
+                                <!-- Scan Toggle -->
+                                <Border CornerRadius="6" Padding="8,4">
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <FontIcon Glyph="&#xE11A;" FontSize="14"
+                                                  Foreground="{ThemeResource SecondaryTextBrush}"
+                                                  VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="BLE Scan" Margin="10,0"
+                                                   VerticalAlignment="Center" FontSize="12"
+                                                   Foreground="{ThemeResource PrimaryTextBrush}"/>
+                                        <ToggleSwitch Grid.Column="2" x:Name="ScanToggle"
+                                                      OnContent="" OffContent="" MinWidth="0"
+                                                      Toggled="ScanToggle_Toggled"/>
+                                    </Grid>
+                                </Border>
+                                <!-- WiFi Service Toggle -->
+                                <Border CornerRadius="6" Padding="8,4">
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <FontIcon Glyph="&#xE701;" FontSize="14"
+                                                  Foreground="{ThemeResource SecondaryTextBrush}"
+                                                  VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="Wi-Fi Direct" Margin="10,0"
+                                                   VerticalAlignment="Center" FontSize="12"
+                                                   Foreground="{ThemeResource PrimaryTextBrush}"/>
+                                        <ToggleSwitch Grid.Column="2" x:Name="WifiServiceToggle"
+                                                      OnContent="" OffContent="" MinWidth="0"
+                                                      Toggled="WifiServiceToggle_Toggled"/>
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
+                        </Expander>
 
                         <!-- ─── Divider ─── -->
-                        <Border Height="1" Background="{ThemeResource DividerBrush}" Margin="0,12,0,8"/>
+                        <Border Height="1" Background="{ThemeResource DividerBrush}" Margin="0,8,0,4"/>
 
                         <!-- Error Display -->
                         <TextBlock x:Name="ErrorText"
