@@ -16,7 +16,6 @@ class SocketMessageChannel(private val socket: Socket) {
     suspend fun handshake(localSessionId: UUID): UUID = withContext(Dispatchers.IO) {
         // Send our Session ID
         val localBytes = ByteBuffer.allocate(16)
-            .order(ByteOrder.LITTLE_ENDIAN)
             .putLong(localSessionId.mostSignificantBits)
             .putLong(localSessionId.leastSignificantBits)
             .array()
@@ -26,7 +25,7 @@ class SocketMessageChannel(private val socket: Socket) {
         // Receive remote Session ID
         val remoteBytes = ByteArray(16)
         inputStream.readFully(remoteBytes)
-        val buffer = ByteBuffer.wrap(remoteBytes).order(ByteOrder.LITTLE_ENDIAN)
+        val buffer = ByteBuffer.wrap(remoteBytes)
         val mostSig = buffer.long
         val leastSig = buffer.long
         UUID(mostSig, leastSig)
