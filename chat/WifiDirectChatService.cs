@@ -311,25 +311,46 @@ public sealed class WifiDirectChatService : IDisposable
             {
                 _socketListener = new StreamSocketListener();
                 _socketListener.ConnectionReceived += SocketListener_ConnectionReceived;
-                await _socketListener.BindEndpointAsync(endpointPairs[0].LocalHostName, ChatPort);
-                Debug.WriteLine($"[Wi-Fi Direct] Listening on {endpointPairs[0].LocalHostName}:{ChatPort}");
+                await _socketListener.BindServiceNameAsync(ChatPort);
+                Debug.WriteLine($"[Wi-Fi Direct] Listening on port {ChatPort}");
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[Wi-Fi Direct] Failed to bind listener: {ex.Message}");
             }
 
-            try
+            _ = Task.Run(async () =>
             {
-                var socket = new StreamSocket();
-                await socket.ConnectAsync(endpointPairs[0].RemoteHostName, ChatPort);
-                Debug.WriteLine($"[Wi-Fi Direct] Socket connected to {endpointPairs[0].RemoteHostName}");
-                AttachChannel(socket, "Connected as client", isClient: true);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[Wi-Fi Direct] Failed to connect as client: {ex.Message}");
-            }
+                for (int i = 0; i < 3; i++)
+                {
+                    if (_channel != null) return;
+
+                    foreach (var pair in endpointPairs)
+                    {
+                        try
+                        {
+                            var socket = new StreamSocket();
+                            await socket.ConnectAsync(pair.RemoteHostName, ChatPort);
+                            _dispatcherQueue.TryEnqueue(() => AttachChannel(socket, "Connected as client", isClient: true));
+                            return;
+                        }
+                        catch { }
+                    }
+
+                    foreach (var ip in new[] { "192.168.49.1", "192.168.137.1" })
+                    {
+                        try
+                        {
+                            var socket = new StreamSocket();
+                            await socket.ConnectAsync(new Windows.Networking.HostName(ip), ChatPort);
+                            _dispatcherQueue.TryEnqueue(() => AttachChannel(socket, $"Connected as client ({ip})", isClient: true));
+                            return;
+                        }
+                        catch { }
+                    }
+                    await Task.Delay(2000);
+                }
+            });
         }
         catch (Exception ex)
         {
@@ -411,24 +432,46 @@ public sealed class WifiDirectChatService : IDisposable
             {
                 _socketListener = new StreamSocketListener();
                 _socketListener.ConnectionReceived += SocketListener_ConnectionReceived;
-                await _socketListener.BindEndpointAsync(endpointPairs[0].LocalHostName, ChatPort);
-                StatusChanged?.Invoke(this, $"Wi-Fi Direct: listening on {endpointPairs[0].LocalHostName}:{ChatPort}");
+                await _socketListener.BindServiceNameAsync(ChatPort);
+                StatusChanged?.Invoke(this, $"Wi-Fi Direct: listening on port {ChatPort}");
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[Wi-Fi Direct] Failed to bind listener: {ex.Message}");
             }
 
-            try
+            _ = Task.Run(async () =>
             {
-                var socket = new StreamSocket();
-                await socket.ConnectAsync(endpointPairs[0].RemoteHostName, ChatPort);
-                AttachChannel(socket, "Connected as client", isClient: true);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[Wi-Fi Direct] Failed to connect as client: {ex.Message}");
-            }
+                for (int i = 0; i < 3; i++)
+                {
+                    if (_channel != null) return;
+
+                    foreach (var pair in endpointPairs)
+                    {
+                        try
+                        {
+                            var socket = new StreamSocket();
+                            await socket.ConnectAsync(pair.RemoteHostName, ChatPort);
+                            _dispatcherQueue.TryEnqueue(() => AttachChannel(socket, "Connected as client", isClient: true));
+                            return;
+                        }
+                        catch { }
+                    }
+
+                    foreach (var ip in new[] { "192.168.49.1", "192.168.137.1" })
+                    {
+                        try
+                        {
+                            var socket = new StreamSocket();
+                            await socket.ConnectAsync(new Windows.Networking.HostName(ip), ChatPort);
+                            _dispatcherQueue.TryEnqueue(() => AttachChannel(socket, $"Connected as client ({ip})", isClient: true));
+                            return;
+                        }
+                        catch { }
+                    }
+                    await Task.Delay(2000);
+                }
+            });
         }
         catch (Exception ex)
         {
