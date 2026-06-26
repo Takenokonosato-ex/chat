@@ -251,7 +251,12 @@ public sealed class WifiDirectChatService : IDisposable
             {
                 try
                 {
-                    await EnsurePairedAsync(peer.DeviceInformation);
+                    var connectionParams = new WiFiDirectConnectionParameters();
+                    connectionParams.PreferenceOrderedConfigurationMethods.Add(WiFiDirectConfigurationMethod.DisplayPin);
+                    connectionParams.PreferenceOrderedConfigurationMethods.Add(WiFiDirectConfigurationMethod.ProvidePin);
+                    connectionParams.PreferredPairingProcedure = WiFiDirectPairingProcedure.GroupOwnerNegotiation;
+
+                    await EnsurePairedAsync(peer.DeviceInformation, connectionParams);
                     var d = await WiFiDirectDevice.FromIdAsync(peer.DeviceInformation.Id);
                     tcs.SetResult(d);
                 }
@@ -313,7 +318,12 @@ public sealed class WifiDirectChatService : IDisposable
             {
                 try
                 {
-                    await EnsurePairedAsync(request.DeviceInformation);
+                    var connectionParams = new WiFiDirectConnectionParameters();
+                    connectionParams.PreferenceOrderedConfigurationMethods.Add(WiFiDirectConfigurationMethod.DisplayPin);
+                    connectionParams.PreferenceOrderedConfigurationMethods.Add(WiFiDirectConfigurationMethod.ProvidePin);
+                    connectionParams.PreferredPairingProcedure = WiFiDirectPairingProcedure.GroupOwnerNegotiation;
+
+                    await EnsurePairedAsync(request.DeviceInformation, connectionParams);
                     var d = await WiFiDirectDevice.FromIdAsync(request.DeviceInformation.Id);
                     tcs.SetResult(d);
                 }
@@ -451,7 +461,7 @@ public sealed class WifiDirectChatService : IDisposable
         _wifiDirectDevice.ConnectionStatusChanged += WifiDirectDevice_ConnectionStatusChanged;
     }
 
-    private async Task EnsurePairedAsync(DeviceInformation deviceInformation)
+    private async Task EnsurePairedAsync(DeviceInformation deviceInformation, WiFiDirectConnectionParameters connectionParams)
     {
         if (deviceInformation.Pairing.IsPaired)
         {
@@ -459,29 +469,31 @@ public sealed class WifiDirectChatService : IDisposable
         }
 
         var customPairing = deviceInformation.Pairing.Custom;
+        void CustomPairing_PairingRequested(DeviceInformationCustomPairing sender, DevicePairingRequestedEventArgs args)
+        {
+            using (var deferral = args.GetDeferral())
+            {
+                if (args.PairingKind == DevicePairingKinds.ProvidePin)
+                {
+                    args.Accept("0000"); // 一部のドライバではPINが必要。固定PIN
+                }
+                else
+                {
+                    args.Accept();
+                }
+            }
+        }
+
         customPairing.PairingRequested += CustomPairing_PairingRequested;
 
-        var result = await customPairing.PairAsync(
-            DevicePairingKinds.ConfirmOnly | DevicePairingKinds.ProvidePin | DevicePairingKinds.DisplayPin);
+        var devicePairingKinds = DevicePairingKinds.ConfirmOnly | DevicePairingKinds.DisplayPin | DevicePairingKinds.ProvidePin;
+        var result = await customPairing.PairAsync(devicePairingKinds, DevicePairingProtectionLevel.Default, connectionParams);
 
         customPairing.PairingRequested -= CustomPairing_PairingRequested;
 
         if (result.Status is not DevicePairingResultStatus.Paired and not DevicePairingResultStatus.AlreadyPaired)
         {
             throw new InvalidOperationException($"Pairing failed: {result.Status}");
-        }
-    }
-
-    private void CustomPairing_PairingRequested(DeviceInformationCustomPairing sender, DevicePairingRequestedEventArgs args)
-    {
-        // PIN入力をスキップして自動承認する
-        if (args.PairingKind == DevicePairingKinds.ProvidePin)
-        {
-            args.Accept("0000"); // 一部のドライバではPINが必要。固定PIN
-        }
-        else
-        {
-            args.Accept();
         }
     }
 
