@@ -17,7 +17,23 @@ public readonly record struct ChatSessionPayload(Guid SessionId, uint Nonce)
     public static readonly byte[] Magic = Encoding.ASCII.GetBytes("CHAT");
     public static readonly byte[] WifiDirectOui = { 0x00, 0x50, 0xF2 };
 
-    public static ChatSessionPayload CreateLocal() => new(Guid.NewGuid(), CreateNonce());
+    public static ChatSessionPayload CreateLocal() => new(EncodeNameToGuid(Environment.MachineName), CreateNonce());
+
+    public static Guid EncodeNameToGuid(string name)
+    {
+        var bytes = new byte[16];
+        var nameBytes = Encoding.UTF8.GetBytes(name);
+        Array.Copy(nameBytes, 0, bytes, 0, Math.Min(nameBytes.Length, 16));
+        return new Guid(bytes);
+    }
+
+    public static string DecodeNameFromGuid(Guid guid)
+    {
+        var bytes = guid.ToByteArray();
+        int len = Array.IndexOf<byte>(bytes, 0);
+        if (len < 0) len = 16;
+        return Encoding.UTF8.GetString(bytes, 0, len);
+    }
 
     public IBuffer ToBuffer()
     {

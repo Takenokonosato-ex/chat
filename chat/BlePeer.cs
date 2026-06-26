@@ -23,6 +23,8 @@ public sealed class BlePeer
 
     public DateTimeOffset LastSeen { get; }
 
+    public string PcName => ChatSessionPayload.DecodeNameFromGuid(SessionId);
+
     public string DisplayText =>
-        $"{SessionId}  RSSI: {RawSignalStrengthInDBm} dBm  Last seen: {LastSeen:HH:mm:ss}";
+        $"{SessionId}  RSSI: {RawSignalStrengthInDBm} dBm  Last seen: {LastSeen:HH:mm:ss} PC: {PcName}";
 }

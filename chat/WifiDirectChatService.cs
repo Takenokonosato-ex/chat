@@ -22,7 +22,7 @@ public sealed class WifiDirectChatService : IDisposable
     private readonly ChatSessionPayload _localSession;
     private readonly Dictionary<string, WifiDirectPeer> _wifiPeersByDeviceId = new();
     private readonly Dictionary<ChatSessionPayload, WifiDirectPeer> _wifiPeersBySession = new();
-    private readonly HashSet<ChatSessionPayload> _blePeers = new();
+    private readonly Dictionary<ChatSessionPayload, BlePeer> _blePeers = new();
     private WiFiDirectAdvertisementPublisher? _publisher;
     private WiFiDirectConnectionListener? _connectionListener;
     private DeviceWatcher? _watcher;
@@ -155,12 +155,19 @@ public sealed class WifiDirectChatService : IDisposable
     public async Task AddBlePeerAsync(BlePeer peer)
     {
         var session = new ChatSessionPayload(peer.SessionId, peer.Nonce);
-        _blePeers.Add(session);
+        _blePeers[session] = peer;
 
         // BLEで発見したセッションに一致するWi-Fi Directピアがいれば自動接続
         if (_wifiPeersBySession.TryGetValue(session, out var wifiPeer))
         {
             await ConnectToPeerInternalAsync(wifiPeer, force: false);
+        }
+        else
+        {
+            // すでにWatcherで発見済みのWi-Fi Directデバイスの名前から探す
+            // _wifiPeersByDeviceId は、実はまだBlePeerと紐付いていないデバイスを保持していない
+            // そのため、pending状態のデバイスをここで再チェックすることは可能だが、
+            // Watcher_Added 側で処理させる方がシンプル。
         }
     }
 
@@ -336,7 +343,7 @@ public sealed class WifiDirectChatService : IDisposable
             var remoteSessionId = await channel.HandshakeAsync(_localSession.SessionId);
             Debug.WriteLine($"[Handshake] remote={remoteSessionId}");
 
-            var expectedSession = _blePeers.FirstOrDefault(s => s.SessionId == remoteSessionId);
+            var expectedSession = _blePeers.Keys.FirstOrDefault(s => s.SessionId == remoteSessionId);
             if (expectedSession == default)
             {
                 StatusChanged?.Invoke(this, $"Wi-Fi Direct: unknown peer {remoteSessionId}, disconnecting");
@@ -440,37 +447,41 @@ public sealed class WifiDirectChatService : IDisposable
 
     private readonly HashSet<string> _pendingDeviceIds = new();
 
+    private bool TryMatchBlePeer(string deviceName, out ChatSessionPayload session)
+    {
+        session = default;
+        foreach (var kvp in _blePeers)
+        {
+            var blePeer = kvp.Value;
+            if (!string.IsNullOrEmpty(blePeer.PcName) &&
+                deviceName.Contains(blePeer.PcName, StringComparison.OrdinalIgnoreCase))
+            {
+                session = kvp.Key;
+                return true;
+            }
+        }
+        return false;
+    }
+
     private async void Watcher_Added(DeviceWatcher sender, DeviceInformation args)
     {
         Debug.WriteLine($"[Watcher_Added] Id={args.Id} Name={args.Name}");
 
-        // Wi-Fi Direct IE からセッション情報を読み取る
-        if (TryGetChatSession(args, out var session))
+        if (TryMatchBlePeer(args.Name, out var session))
         {
-            // 自分自身は無視
-            if (session == _localSession)
-            {
-                Debug.WriteLine($"[Watcher_Added] Ignoring self: {args.Name}");
-                return;
-            }
-
             var peer = new WifiDirectPeer(args, session);
             _wifiPeersByDeviceId[args.Id] = peer;
             _wifiPeersBySession[session] = peer;
             PeerDiscovered?.Invoke(this, peer);
             StatusChanged?.Invoke(this, $"Wi-Fi Direct peer: {session.SessionId.ToString()[..8]}");
 
-            // BLEで既に発見済みなら自動接続
-            if (_blePeers.Contains(session))
-            {
-                await ConnectToPeerInternalAsync(peer, force: false);
-            }
+            await ConnectToPeerInternalAsync(peer, force: false);
         }
         else
         {
-            // IEがまだ読めない → Updated で再試行するためキューに追加
+            // BLEでまだ発見されていない場合はキューに追加してUpdatedで再試行
             _pendingDeviceIds.Add(args.Id);
-            Debug.WriteLine($"[Watcher_Added] IE not found, queued: {args.Name}");
+            Debug.WriteLine($"[Watcher_Added] BLE peer not matched yet, queued: {args.Name}");
         }
     }
 
@@ -488,14 +499,8 @@ public sealed class WifiDirectChatService : IDisposable
                 var deviceInfo = await DeviceInformation.CreateFromIdAsync(args.Id, DeviceProperties);
                 Debug.WriteLine($"[Watcher_Updated retry] Name={deviceInfo.Name}");
 
-                if (TryGetChatSession(deviceInfo, out var session))
+                if (TryMatchBlePeer(deviceInfo.Name, out var session))
                 {
-                    if (session == _localSession)
-                    {
-                        _pendingDeviceIds.Remove(args.Id);
-                        return;
-                    }
-
                     _pendingDeviceIds.Remove(args.Id);
                     var peer = new WifiDirectPeer(deviceInfo, session);
                     _wifiPeersByDeviceId[deviceInfo.Id] = peer;
@@ -503,10 +508,7 @@ public sealed class WifiDirectChatService : IDisposable
                     PeerDiscovered?.Invoke(this, peer);
                     StatusChanged?.Invoke(this, $"Wi-Fi Direct peer: {session.SessionId.ToString()[..8]}");
 
-                    if (_blePeers.Contains(session))
-                    {
-                        await ConnectToPeerInternalAsync(peer, force: false);
-                    }
+                    await ConnectToPeerInternalAsync(peer, force: false);
                 }
             }
             catch (Exception ex)
@@ -538,45 +540,6 @@ public sealed class WifiDirectChatService : IDisposable
 
 
 
-    private static bool TryGetChatSession(
-        DeviceInformation deviceInformation,
-        out ChatSessionPayload session)
-    {
-        session = default;
-
-        try
-        {
-            var elements =
-                WiFiDirectInformationElement
-                    .CreateFromDeviceInformation(deviceInformation);
-
-            Debug.WriteLine(
-                $"Device={deviceInformation.Name} Elements={elements.Count}");
-            foreach (var element in elements)
-            {
-                var oui = WindowsRuntimeBufferExtensions.ToArray(element.Oui);
-
-                Debug.WriteLine(
-                    $"Type={element.OuiType} " +
-                    $"OUI={BitConverter.ToString(oui)}");
-                if (!ChatSessionPayload.IsOurWifiDirectElement(element))
-                {
-                    continue;
-                }
-
-                if (ChatSessionPayload.TryParse(element.Value, out session))
-                {
-                    return true;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine(ex);
-        }
-
-        return false;
-    }
 
     private void Publisher_StatusChanged(WiFiDirectAdvertisementPublisher sender, WiFiDirectAdvertisementPublisherStatusChangedEventArgs args)
     {
