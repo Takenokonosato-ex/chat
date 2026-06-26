@@ -52,15 +52,31 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _errors = MutableStateFlow<String?>(null)
     val errors: StateFlow<String?> = _errors.asStateFlow()
 
+    private val _logs = MutableStateFlow<List<String>>(emptyList())
+    val logs: StateFlow<List<String>> = _logs.asStateFlow()
+
+    fun logSystemMessage(msg: String) {
+        val time = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
+        val formatted = "[$time] $msg"
+        _logs.value = (_logs.value + formatted).takeLast(100) // Keep last 100 logs
+    }
+
     init {
         viewModelScope.launch {
-            bleService.errorOccurred.collect { _errors.value = it }
+            bleService.errorOccurred.collect { 
+                _errors.value = it 
+                logSystemMessage("BLE Error: $it")
+            }
         }
         viewModelScope.launch {
-            wifiService.errorOccurred.collect { _errors.value = it }
+            wifiService.errorOccurred.collect { 
+                _errors.value = it 
+                logSystemMessage("WiFi Error: $it")
+            }
         }
         viewModelScope.launch {
             bleService.peerDiscovered.collect { peer ->
+                logSystemMessage("BLE Discovered: ${peer.pcName}")
                 val currentList = _blePeers.value.toMutableList()
                 currentList.removeAll { it.sessionId == peer.sessionId }
                 currentList.add(peer)
@@ -71,6 +87,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch {
             wifiService.peerDiscovered.collect { peer ->
+                logSystemMessage("WiFi Discovered: ${peer.device.deviceName}")
                 val currentList = _peers.value.toMutableList()
                 currentList.removeAll { it.session.sessionId == peer.session.sessionId }
                 currentList.add(peer)
@@ -80,12 +97,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             wifiService.messageReceived.collect { msg ->
                 if (msg.startsWith("[System]")) {
-                    // System message
+                    logSystemMessage(msg.removePrefix("[System] ").trim())
                 } else {
                     addMessage(msg, "Peer", false)
                 }
             }
         }
+        viewModelScope.launch { publisherStatus.collect { logSystemMessage(it) } }
+        viewModelScope.launch { watcherStatus.collect { logSystemMessage(it) } }
+        viewModelScope.launch { wifiStatus.collect { logSystemMessage(it) } }
     }
 
     fun startAdvertising() = bleService.startAdvertising()

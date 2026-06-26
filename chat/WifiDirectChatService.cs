@@ -50,7 +50,7 @@ public sealed class WifiDirectChatService : IDisposable
 
     private void LogDebug(string msg)
     {
-        Debug.WriteLine(msg);
+        LogDebug(msg);
         MessageReceived?.Invoke(this, $"[System] {msg}");
     }
 
@@ -264,14 +264,14 @@ public sealed class WifiDirectChatService : IDisposable
                     connectionParams.PreferenceOrderedConfigurationMethods.Add(WiFiDirectConfigurationMethod.PushButton);
                     connectionParams.PreferredPairingProcedure = WiFiDirectPairingProcedure.GroupOwnerNegotiation;
 
-                    Debug.WriteLine($"[Wi-Fi Direct] EnsurePairedAsync to {peer.DeviceInformation.Name}");
+                    LogDebug($"[Wi-Fi Direct] EnsurePairedAsync to {peer.DeviceInformation.Name}");
                     bool paired = await EnsurePairedAsync(peer.DeviceInformation, connectionParams);
                     if (!paired)
                     {
                         tcs.SetResult(null);
                         return;
                     }
-                    Debug.WriteLine($"[Wi-Fi Direct] Paired. Creating WiFiDirectDevice from ID.");
+                    LogDebug($"[Wi-Fi Direct] Paired. Creating WiFiDirectDevice from ID.");
                     WiFiDirectDevice? d = null;
                     try
                     {
@@ -279,7 +279,7 @@ public sealed class WifiDirectChatService : IDisposable
                     }
                     catch (Exception ex) when (ex.HResult == unchecked((int)0x80070288))
                     {
-                        Debug.WriteLine("[Wi-Fi Direct] Stale pairing detected. Unpairing...");
+                        LogDebug("[Wi-Fi Direct] Stale pairing detected. Unpairing...");
                         await peer.DeviceInformation.Pairing.UnpairAsync();
                         paired = await EnsurePairedAsync(peer.DeviceInformation, connectionParams);
                         if (paired)
@@ -291,7 +291,7 @@ public sealed class WifiDirectChatService : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[Wi-Fi Direct] Connection setup failed: {ex}");
+                    LogDebug($"[Wi-Fi Direct] Connection setup failed: {ex}");
                     ErrorOccurred?.Invoke(this, $"EnsurePairedエラー: {ex.Message}");
                     tcs.SetException(ex);
                 }
@@ -312,7 +312,7 @@ public sealed class WifiDirectChatService : IDisposable
                 return;
             }
 
-            Debug.WriteLine($"[Wi-Fi Direct] Endpoints found. Connecting to {endpointPairs[0].RemoteHostName}:{ChatPort}");
+            LogDebug($"[Wi-Fi Direct] Endpoints found. Connecting to {endpointPairs[0].RemoteHostName}:{ChatPort}");
             await Task.Delay(2000);
 
             try
@@ -320,11 +320,11 @@ public sealed class WifiDirectChatService : IDisposable
                 _socketListener = new StreamSocketListener();
                 _socketListener.ConnectionReceived += SocketListener_ConnectionReceived;
                 await _socketListener.BindServiceNameAsync(ChatPort);
-                Debug.WriteLine($"[Wi-Fi Direct] Listening on port {ChatPort}");
+                LogDebug($"[Wi-Fi Direct] Listening on port {ChatPort}");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[Wi-Fi Direct] Failed to bind listener: {ex.Message}");
+                LogDebug($"[Wi-Fi Direct] Failed to bind listener: {ex.Message}");
             }
 
             _ = Task.Run(async () =>
@@ -397,14 +397,14 @@ public sealed class WifiDirectChatService : IDisposable
                     connectionParams.PreferenceOrderedConfigurationMethods.Add(WiFiDirectConfigurationMethod.PushButton);
                     connectionParams.PreferredPairingProcedure = WiFiDirectPairingProcedure.GroupOwnerNegotiation;
 
-                    Debug.WriteLine($"[Wi-Fi Direct] EnsurePairedAsync (Listener) to {request.DeviceInformation.Name}");
+                    LogDebug($"[Wi-Fi Direct] EnsurePairedAsync (Listener) to {request.DeviceInformation.Name}");
                     bool paired = await EnsurePairedAsync(request.DeviceInformation, connectionParams);
                     if (!paired)
                     {
                         tcs.SetResult(null);
                         return;
                     }
-                    Debug.WriteLine($"[Wi-Fi Direct] Paired (Listener). Creating WiFiDirectDevice from ID.");
+                    LogDebug($"[Wi-Fi Direct] Paired (Listener). Creating WiFiDirectDevice from ID.");
                     WiFiDirectDevice? d = null;
                     try
                     {
@@ -412,7 +412,7 @@ public sealed class WifiDirectChatService : IDisposable
                     }
                     catch (Exception ex) when (ex.HResult == unchecked((int)0x80070288))
                     {
-                        Debug.WriteLine("[Wi-Fi Direct] Stale pairing detected. Unpairing...");
+                        LogDebug("[Wi-Fi Direct] Stale pairing detected. Unpairing...");
                         await request.DeviceInformation.Pairing.UnpairAsync();
                         paired = await EnsurePairedAsync(request.DeviceInformation, connectionParams);
                         if (paired)
@@ -424,7 +424,7 @@ public sealed class WifiDirectChatService : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[Wi-Fi Direct] Listener setup failed: {ex}");
+                    LogDebug($"[Wi-Fi Direct] Listener setup failed: {ex}");
                     tcs.SetException(ex);
                 }
             });
@@ -455,7 +455,7 @@ public sealed class WifiDirectChatService : IDisposable
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[Wi-Fi Direct] Failed to bind listener: {ex.Message}");
+                LogDebug($"[Wi-Fi Direct] Failed to bind listener: {ex.Message}");
             }
 
             _ = Task.Run(async () =>
@@ -527,7 +527,7 @@ public sealed class WifiDirectChatService : IDisposable
         try
         {
             var remoteSessionId = await channel.HandshakeAsync(_localSession.SessionId);
-            Debug.WriteLine($"[Handshake] remote={remoteSessionId}");
+            LogDebug($"[Handshake] remote={remoteSessionId}");
 
             var expectedSession = _blePeers.Keys.FirstOrDefault(s => s.SessionId == remoteSessionId);
             if (expectedSession == default)
@@ -616,7 +616,7 @@ public sealed class WifiDirectChatService : IDisposable
         var customPairing = deviceInformation.Pairing.Custom;
         void CustomPairing_PairingRequested(DeviceInformationCustomPairing sender, DevicePairingRequestedEventArgs args)
         {
-            Debug.WriteLine($"[Wi-Fi Direct] PairingRequested: Kind={args.PairingKind}");
+            LogDebug($"[Wi-Fi Direct] PairingRequested: Kind={args.PairingKind}");
             using (var deferral = args.GetDeferral())
             {
                 if (args.PairingKind == DevicePairingKinds.ProvidePin)
@@ -639,7 +639,7 @@ public sealed class WifiDirectChatService : IDisposable
 
         if (result.Status is not DevicePairingResultStatus.Paired and not DevicePairingResultStatus.AlreadyPaired)
         {
-            Debug.WriteLine($"Pairing failed: {result.Status}");
+            LogDebug($"Pairing failed: {result.Status}");
             return false;
         }
 

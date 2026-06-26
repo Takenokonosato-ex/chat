@@ -90,6 +90,7 @@ fun DrawerContent(viewModel: ChatViewModel) {
     val blePeers by viewModel.blePeers.collectAsState()
     val wifiPeers by viewModel.peers.collectAsState()
     val errors by viewModel.errors.collectAsState()
+    val logs by viewModel.logs.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Header
@@ -168,6 +169,15 @@ fun DrawerContent(viewModel: ChatViewModel) {
                     address = peer.macAddress,
                     onClick = { }
                 )
+            }
+            item {
+                HorizontalDivider(color = DiscordDarkBackground)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("SYSTEM LOGS", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DiscordTextSecondary)
+            }
+
+            items(logs.reversed()) { log ->
+                Text(log, color = DiscordTextMuted, fontSize = 10.sp, lineHeight = 12.sp)
             }
         }
     }
