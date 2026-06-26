@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Windows.Devices.Enumeration;
 using Windows.Devices.WiFiDirect;
-using Windows.Networking;
 using Windows.Networking.Sockets;
 
 namespace chat;
@@ -39,7 +39,7 @@ public sealed class WifiDirectChatService : IDisposable
     public event EventHandler<string>? StatusChanged;
     public event EventHandler<string>? ErrorOccurred;
     public event EventHandler<WifiDirectPeer>? PeerDiscovered;
-    public event EventHandler<string>? MessageReceived;
+    public event EventHandler<ChatWireMessage>? MessageReceived;
     public event EventHandler<bool>? ConnectionStateChanged;
 
     public bool IsStarted => _isStarted;
@@ -67,7 +67,7 @@ public sealed class WifiDirectChatService : IDisposable
         }
         catch (Exception ex)
         {
-            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct listener start failed: {ex.Message}");
+            ErrorOccurred?.Invoke(this, $"Wi-Fi Directリスナーを開始できませんでした: {ex.Message}");
             Stop();
             return;
         }
@@ -85,11 +85,11 @@ public sealed class WifiDirectChatService : IDisposable
             _publisher.Start();
             _watcher.Start();
             _isStarted = true;
-            StatusChanged?.Invoke(this, $"Wi-Fi Direct: Started ({_publisher.Status})");
+            StatusChanged?.Invoke(this, $"Wi-Fi Direct: 開始 ({_publisher.Status})");
         }
         catch (Exception ex)
         {
-            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct start failed: {ex.Message}");
+            ErrorOccurred?.Invoke(this, $"Wi-Fi Directを開始できませんでした: {ex.Message}");
             Stop();
         }
 
@@ -114,7 +114,7 @@ public sealed class WifiDirectChatService : IDisposable
             }
             catch (Exception ex)
             {
-                ErrorOccurred?.Invoke(this, $"Wi-Fi Direct watcher stop failed: {ex.Message}");
+                ErrorOccurred?.Invoke(this, $"Wi-Fi Directウォッチャーを停止できませんでした: {ex.Message}");
             }
 
             _watcher = null;
@@ -135,7 +135,7 @@ public sealed class WifiDirectChatService : IDisposable
             }
             catch (Exception ex)
             {
-                ErrorOccurred?.Invoke(this, $"Wi-Fi Direct publisher stop failed: {ex.Message}");
+                ErrorOccurred?.Invoke(this, $"Wi-Fi Direct広告を停止できませんでした: {ex.Message}");
             }
 
             _publisher = null;
@@ -146,7 +146,7 @@ public sealed class WifiDirectChatService : IDisposable
         _blePeers.Clear();
         _isStarted = false;
         _isConnecting = false;
-        StatusChanged?.Invoke(this, "Wi-Fi Direct: Stopped");
+        StatusChanged?.Invoke(this, "Wi-Fi Direct: 停止");
     }
 
     public async Task AddBlePeerAsync(BlePeer peer)
@@ -167,21 +167,30 @@ public sealed class WifiDirectChatService : IDisposable
 
     public async Task SendMessageAsync(string message)
     {
-        if (_channel is null)
-        {
-            ErrorOccurred?.Invoke(this, "未接続です。Wi-Fi Direct 接続後に送信してください。");
-            return;
-        }
+        var wireMessage = new ChatWireMessage(
+            ChatWireMessage.TextKind,
+            message,
+            null,
+            null,
+            0,
+            null,
+            DateTimeOffset.Now);
 
-        try
-        {
-            await _channel.SendAsync(message);
-        }
-        catch (Exception ex)
-        {
-            ErrorOccurred?.Invoke(this, $"Message send failed: {ex.Message}");
-            CloseConnection();
-        }
+        await SendWireMessageAsync(wireMessage, "メッセージ");
+    }
+
+    public async Task SendFileAsync(string fileName, string contentType, byte[] content)
+    {
+        var wireMessage = new ChatWireMessage(
+            ChatWireMessage.FileKind,
+            null,
+            fileName,
+            contentType,
+            content.LongLength,
+            Convert.ToBase64String(content),
+            DateTimeOffset.Now);
+
+        await SendWireMessageAsync(wireMessage, "ファイル");
     }
 
     public void CloseConnection()
@@ -213,11 +222,30 @@ public sealed class WifiDirectChatService : IDisposable
         _disposed = true;
     }
 
+    private async Task SendWireMessageAsync(ChatWireMessage wireMessage, string label)
+    {
+        if (_channel is null)
+        {
+            ErrorOccurred?.Invoke(this, $"未接続です。Wi-Fi Directで相手に接続してから{label}を送信してください。");
+            return;
+        }
+
+        try
+        {
+            await _channel.SendAsync(JsonSerializer.Serialize(wireMessage));
+        }
+        catch (Exception ex)
+        {
+            ErrorOccurred?.Invoke(this, $"{label}の送信に失敗しました: {ex.Message}");
+            CloseConnection();
+        }
+    }
+
     private async Task TryAutoConnectAsync(WifiDirectPeer peer)
     {
         if (!ShouldInitiateConnection(peer.Session))
         {
-            StatusChanged?.Invoke(this, $"Wi-Fi Direct: waiting for peer {peer.Session.SessionId} to connect");
+            StatusChanged?.Invoke(this, $"Wi-Fi Direct: 相手 {peer.Session.SessionId} の接続待ち");
             return;
         }
 
@@ -237,7 +265,7 @@ public sealed class WifiDirectChatService : IDisposable
         }
 
         _isConnecting = true;
-        StatusChanged?.Invoke(this, $"Wi-Fi Direct: connecting to {peer.DeviceInformation.Name}");
+        StatusChanged?.Invoke(this, $"Wi-Fi Direct: {peer.DeviceInformation.Name} に接続中");
 
         try
         {
@@ -245,7 +273,7 @@ public sealed class WifiDirectChatService : IDisposable
             var device = await WiFiDirectDevice.FromIdAsync(peer.DeviceInformation.Id);
             if (device is null)
             {
-                ErrorOccurred?.Invoke(this, "Wi-Fi Direct connection failed: device was null.");
+                ErrorOccurred?.Invoke(this, "Wi-Fi Direct接続に失敗しました: デバイスが取得できません。");
                 return;
             }
 
@@ -253,7 +281,7 @@ public sealed class WifiDirectChatService : IDisposable
             var endpointPairs = device.GetConnectionEndpointPairs();
             if (endpointPairs.Count == 0)
             {
-                ErrorOccurred?.Invoke(this, "Wi-Fi Direct connection failed: no endpoint pairs.");
+                ErrorOccurred?.Invoke(this, "Wi-Fi Direct接続に失敗しました: エンドポイントがありません。");
                 return;
             }
 
@@ -261,11 +289,11 @@ public sealed class WifiDirectChatService : IDisposable
 
             var socket = new StreamSocket();
             await socket.ConnectAsync(endpointPairs[0].RemoteHostName, ChatPort);
-            AttachChannel(socket, "Connected as client");
+            AttachChannel(socket, "クライアントとして接続");
         }
         catch (Exception ex)
         {
-            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct connect failed: {ex.Message} Mobile Hotspot が ON の場合は OFF にしてください。");
+            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct接続に失敗しました: {ex.Message}。モバイルホットスポットがONの場合はOFFにして再試行してください。");
             CloseConnection();
         }
         finally
@@ -280,12 +308,12 @@ public sealed class WifiDirectChatService : IDisposable
 
         if (IsConnected || _isConnecting)
         {
-            StatusChanged?.Invoke(this, $"Wi-Fi Direct: ignored extra request from {request.DeviceInformation.Name}");
+            StatusChanged?.Invoke(this, $"Wi-Fi Direct: 追加の接続要求を無視しました ({request.DeviceInformation.Name})");
             return;
         }
 
         _isConnecting = true;
-        StatusChanged?.Invoke(this, $"Wi-Fi Direct: request from {request.DeviceInformation.Name}");
+        StatusChanged?.Invoke(this, $"Wi-Fi Direct: {request.DeviceInformation.Name} から接続要求");
 
         try
         {
@@ -293,7 +321,7 @@ public sealed class WifiDirectChatService : IDisposable
             var device = await WiFiDirectDevice.FromIdAsync(request.DeviceInformation.Id);
             if (device is null)
             {
-                ErrorOccurred?.Invoke(this, "Wi-Fi Direct accept failed: device was null.");
+                ErrorOccurred?.Invoke(this, "Wi-Fi Direct要求の受け入れに失敗しました: デバイスが取得できません。");
                 return;
             }
 
@@ -301,18 +329,18 @@ public sealed class WifiDirectChatService : IDisposable
             var endpointPairs = device.GetConnectionEndpointPairs();
             if (endpointPairs.Count == 0)
             {
-                ErrorOccurred?.Invoke(this, "Wi-Fi Direct accept failed: no endpoint pairs.");
+                ErrorOccurred?.Invoke(this, "Wi-Fi Direct要求の受け入れに失敗しました: エンドポイントがありません。");
                 return;
             }
 
             _socketListener = new StreamSocketListener();
             _socketListener.ConnectionReceived += SocketListener_ConnectionReceived;
             await _socketListener.BindEndpointAsync(endpointPairs[0].LocalHostName, ChatPort);
-            StatusChanged?.Invoke(this, $"Wi-Fi Direct: listening on {endpointPairs[0].LocalHostName}:{ChatPort}");
+            StatusChanged?.Invoke(this, $"Wi-Fi Direct: {endpointPairs[0].LocalHostName}:{ChatPort} で待機中");
         }
         catch (Exception ex)
         {
-            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct accept failed: {ex.Message} Mobile Hotspot が ON の場合は OFF にしてください。");
+            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct要求の受け入れに失敗しました: {ex.Message}。モバイルホットスポットがONの場合はOFFにして再試行してください。");
             CloseConnection();
         }
         finally
@@ -323,7 +351,7 @@ public sealed class WifiDirectChatService : IDisposable
 
     private void SocketListener_ConnectionReceived(StreamSocketListener sender, StreamSocketListenerConnectionReceivedEventArgs args)
     {
-        AttachChannel(args.Socket, "Connected as server");
+        AttachChannel(args.Socket, "サーバーとして接続");
     }
 
     private void AttachChannel(StreamSocket socket, string status)
@@ -347,7 +375,7 @@ public sealed class WifiDirectChatService : IDisposable
                     break;
                 }
 
-                MessageReceived?.Invoke(this, message);
+                MessageReceived?.Invoke(this, ParseWireMessage(message));
             }
         }
         catch (ObjectDisposedException)
@@ -355,14 +383,14 @@ public sealed class WifiDirectChatService : IDisposable
         }
         catch (Exception ex)
         {
-            ErrorOccurred?.Invoke(this, $"Receive failed: {ex.Message}");
+            ErrorOccurred?.Invoke(this, $"受信に失敗しました: {ex.Message}");
         }
         finally
         {
             if (_channel == channel)
             {
                 CloseConnection();
-                StatusChanged?.Invoke(this, "Wi-Fi Direct: socket closed");
+                StatusChanged?.Invoke(this, "Wi-Fi Direct: ソケット切断");
             }
         }
     }
@@ -389,7 +417,7 @@ public sealed class WifiDirectChatService : IDisposable
         var result = await deviceInformation.Pairing.PairAsync();
         if (result.Status is not DevicePairingResultStatus.Paired and not DevicePairingResultStatus.AlreadyPaired)
         {
-            throw new InvalidOperationException($"Pairing failed: {result.Status}");
+            throw new InvalidOperationException($"ペアリングに失敗しました: {result.Status}");
         }
     }
 
@@ -429,12 +457,12 @@ public sealed class WifiDirectChatService : IDisposable
 
     private void Watcher_EnumerationCompleted(DeviceWatcher sender, object args)
     {
-        StatusChanged?.Invoke(this, "Wi-Fi Direct: enumeration completed");
+        StatusChanged?.Invoke(this, "Wi-Fi Direct: 探索完了");
     }
 
     private void Watcher_Stopped(DeviceWatcher sender, object args)
     {
-        StatusChanged?.Invoke(this, "Wi-Fi Direct: watcher stopped");
+        StatusChanged?.Invoke(this, "Wi-Fi Direct: 探索停止");
     }
 
     private async void TryAddOrUpdateWifiPeer(DeviceInformation deviceInformation)
@@ -468,7 +496,6 @@ public sealed class WifiDirectChatService : IDisposable
         IReadOnlyList<WiFiDirectInformationElement> elements;
         try
         {
-            // 明示的にキャスト
             elements = (IReadOnlyList<WiFiDirectInformationElement>)WiFiDirectInformationElement.CreateFromDeviceInformation(deviceInformation);
         }
         catch
@@ -487,13 +514,37 @@ public sealed class WifiDirectChatService : IDisposable
         return false;
     }
 
+    private static ChatWireMessage ParseWireMessage(string message)
+    {
+        try
+        {
+            var wireMessage = JsonSerializer.Deserialize<ChatWireMessage>(message);
+            if (wireMessage is not null && !string.IsNullOrWhiteSpace(wireMessage.Kind))
+            {
+                return wireMessage;
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return new ChatWireMessage(
+            ChatWireMessage.TextKind,
+            message,
+            null,
+            null,
+            0,
+            null,
+            DateTimeOffset.Now);
+    }
+
     private void Publisher_StatusChanged(WiFiDirectAdvertisementPublisher sender, WiFiDirectAdvertisementPublisherStatusChangedEventArgs args)
     {
         StatusChanged?.Invoke(this, $"Wi-Fi Direct publisher: {args.Status}");
 
         if (args.Error != WiFiDirectError.Success)
         {
-            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct publisher error: {args.Error}. Mobile Hotspot が ON の場合は OFF にしてください。");
+            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct publisher error: {args.Error}。モバイルホットスポットがONの場合はOFFにして再試行してください。");
         }
     }
 
