@@ -47,6 +47,7 @@
   </Applications>
 
   <Capabilities>
+    <Capability Name="internetClientServer" />
     <Capability Name="privateNetworkClientServer" />
     <rescap:Capability Name="runFullTrust" />
     <systemai:Capability Name="systemAIModels"/>

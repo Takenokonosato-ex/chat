@@ -252,16 +252,18 @@ public sealed class WifiDirectChatService : IDisposable
                 try
                 {
                     var connectionParams = new WiFiDirectConnectionParameters();
-                    connectionParams.PreferenceOrderedConfigurationMethods.Add(WiFiDirectConfigurationMethod.DisplayPin);
-                    connectionParams.PreferenceOrderedConfigurationMethods.Add(WiFiDirectConfigurationMethod.ProvidePin);
+                    connectionParams.PreferenceOrderedConfigurationMethods.Add(WiFiDirectConfigurationMethod.PushButton);
                     connectionParams.PreferredPairingProcedure = WiFiDirectPairingProcedure.GroupOwnerNegotiation;
 
+                    Debug.WriteLine($"[Wi-Fi Direct] EnsurePairedAsync to {peer.DeviceInformation.Name}");
                     await EnsurePairedAsync(peer.DeviceInformation, connectionParams);
+                    Debug.WriteLine($"[Wi-Fi Direct] Paired. Creating WiFiDirectDevice from ID.");
                     var d = await WiFiDirectDevice.FromIdAsync(peer.DeviceInformation.Id);
                     tcs.SetResult(d);
                 }
                 catch (Exception ex)
                 {
+                    Debug.WriteLine($"[Wi-Fi Direct] Connection setup failed: {ex}");
                     tcs.SetException(ex);
                 }
             });
@@ -277,14 +279,16 @@ public sealed class WifiDirectChatService : IDisposable
             var endpointPairs = device.GetConnectionEndpointPairs();
             if (endpointPairs.Count == 0)
             {
-                ErrorOccurred?.Invoke(this, "Wi-Fi Direct connection failed: no endpoint pairs.");
+                ErrorOccurred?.Invoke(this, "Wi-Fi Direct connection failed: no endpoint pairs. L2 connection might have failed.");
                 return;
             }
 
+            Debug.WriteLine($"[Wi-Fi Direct] Endpoints found. Connecting to {endpointPairs[0].RemoteHostName}:{ChatPort}");
             await Task.Delay(2000);
 
             var socket = new StreamSocket();
             await socket.ConnectAsync(endpointPairs[0].RemoteHostName, ChatPort);
+            Debug.WriteLine($"[Wi-Fi Direct] Socket connected to {endpointPairs[0].RemoteHostName}");
             AttachChannel(socket, "Connected as client", isClient: true);
         }
         catch (Exception ex)
@@ -319,16 +323,18 @@ public sealed class WifiDirectChatService : IDisposable
                 try
                 {
                     var connectionParams = new WiFiDirectConnectionParameters();
-                    connectionParams.PreferenceOrderedConfigurationMethods.Add(WiFiDirectConfigurationMethod.DisplayPin);
-                    connectionParams.PreferenceOrderedConfigurationMethods.Add(WiFiDirectConfigurationMethod.ProvidePin);
+                    connectionParams.PreferenceOrderedConfigurationMethods.Add(WiFiDirectConfigurationMethod.PushButton);
                     connectionParams.PreferredPairingProcedure = WiFiDirectPairingProcedure.GroupOwnerNegotiation;
 
+                    Debug.WriteLine($"[Wi-Fi Direct] EnsurePairedAsync (Listener) to {request.DeviceInformation.Name}");
                     await EnsurePairedAsync(request.DeviceInformation, connectionParams);
+                    Debug.WriteLine($"[Wi-Fi Direct] Paired (Listener). Creating WiFiDirectDevice from ID.");
                     var d = await WiFiDirectDevice.FromIdAsync(request.DeviceInformation.Id);
                     tcs.SetResult(d);
                 }
                 catch (Exception ex)
                 {
+                    Debug.WriteLine($"[Wi-Fi Direct] Listener setup failed: {ex}");
                     tcs.SetException(ex);
                 }
             });
@@ -471,6 +477,7 @@ public sealed class WifiDirectChatService : IDisposable
         var customPairing = deviceInformation.Pairing.Custom;
         void CustomPairing_PairingRequested(DeviceInformationCustomPairing sender, DevicePairingRequestedEventArgs args)
         {
+            Debug.WriteLine($"[Wi-Fi Direct] PairingRequested: Kind={args.PairingKind}");
             using (var deferral = args.GetDeferral())
             {
                 if (args.PairingKind == DevicePairingKinds.ProvidePin)
