@@ -8,9 +8,91 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
-                <!-- Other merged dictionaries here -->
             </ResourceDictionary.MergedDictionaries>
-            <!-- Other app resources here sexq! -->
+
+            <ResourceDictionary.ThemeDictionaries>
+                <!-- =============================== -->
+                <!-- DARK THEME (Discord-inspired)   -->
+                <!-- =============================== -->
+                <ResourceDictionary x:Key="Dark">
+                    <!-- Backgrounds -->
+                    <SolidColorBrush x:Key="AppBackgroundBrush" Color="#313338" />
+                    <SolidColorBrush x:Key="SidebarBackgroundBrush" Color="#1E1F22" />
+                    <SolidColorBrush x:Key="PeerListBackgroundBrush" Color="#2B2D31" />
+                    <SolidColorBrush x:Key="InputBackgroundBrush" Color="#383A40" />
+                    <SolidColorBrush x:Key="ChannelHeaderBrush" Color="#313338" />
+
+                    <!-- Text -->
+                    <SolidColorBrush x:Key="PrimaryTextBrush" Color="#F2F3F5" />
+                    <SolidColorBrush x:Key="SecondaryTextBrush" Color="#B5BAC1" />
+                    <SolidColorBrush x:Key="SectionHeaderBrush" Color="#949BA4" />
+
+                    <!-- Accent (Discord Blurple) -->
+                    <SolidColorBrush x:Key="AccentBrush" Color="#5865F2" />
+                    <SolidColorBrush x:Key="AccentHoverBrush" Color="#4752C4" />
+                    <SolidColorBrush x:Key="SuccessBrush" Color="#57F287" />
+                    <SolidColorBrush x:Key="ErrorBrush" Color="#ED4245" />
+                    <SolidColorBrush x:Key="WarningBrush" Color="#FEE75C" />
+
+                    <!-- Borders and Dividers -->
+                    <SolidColorBrush x:Key="AppBorderBrush" Color="#3F4147" />
+                    <SolidColorBrush x:Key="DividerBrush" Color="#3F4147" />
+                    <SolidColorBrush x:Key="HoverBrush" Color="#35373C" />
+
+                    <!-- Chat Bubbles -->
+                    <SolidColorBrush x:Key="ChatBubbleMeBrush" Color="#5865F2" />
+                    <SolidColorBrush x:Key="ChatBubblePeerBrush" Color="#383A40" />
+                    <SolidColorBrush x:Key="ChatBubbleMeTextBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ChatBubblePeerTextBrush" Color="#F2F3F5" />
+
+                    <!-- Buttons -->
+                    <SolidColorBrush x:Key="ButtonDefaultBrush" Color="#4E5058" />
+                    <SolidColorBrush x:Key="ButtonDefaultHoverBrush" Color="#6D6F78" />
+                    <SolidColorBrush x:Key="ButtonDangerBrush" Color="#DA373C" />
+                    <SolidColorBrush x:Key="ButtonSuccessBrush" Color="#248046" />
+                </ResourceDictionary>
+
+                <!-- =============================== -->
+                <!-- LIGHT THEME                     -->
+                <!-- =============================== -->
+                <ResourceDictionary x:Key="Light">
+                    <!-- Backgrounds -->
+                    <SolidColorBrush x:Key="AppBackgroundBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="SidebarBackgroundBrush" Color="#E3E5E8" />
+                    <SolidColorBrush x:Key="PeerListBackgroundBrush" Color="#F2F3F5" />
+                    <SolidColorBrush x:Key="InputBackgroundBrush" Color="#EBEDEF" />
+                    <SolidColorBrush x:Key="ChannelHeaderBrush" Color="#FFFFFF" />
+
+                    <!-- Text -->
+                    <SolidColorBrush x:Key="PrimaryTextBrush" Color="#313338" />
+                    <SolidColorBrush x:Key="SecondaryTextBrush" Color="#5C6370" />
+                    <SolidColorBrush x:Key="SectionHeaderBrush" Color="#5C6370" />
+
+                    <!-- Accent -->
+                    <SolidColorBrush x:Key="AccentBrush" Color="#5865F2" />
+                    <SolidColorBrush x:Key="AccentHoverBrush" Color="#4752C4" />
+                    <SolidColorBrush x:Key="SuccessBrush" Color="#248046" />
+                    <SolidColorBrush x:Key="ErrorBrush" Color="#DA373C" />
+                    <SolidColorBrush x:Key="WarningBrush" Color="#F0B232" />
+
+                    <!-- Borders and Dividers -->
+                    <SolidColorBrush x:Key="AppBorderBrush" Color="#E0E2E6" />
+                    <SolidColorBrush x:Key="DividerBrush" Color="#E0E2E6" />
+                    <SolidColorBrush x:Key="HoverBrush" Color="#E8E9EC" />
+
+                    <!-- Chat Bubbles -->
+                    <SolidColorBrush x:Key="ChatBubbleMeBrush" Color="#5865F2" />
+                    <SolidColorBrush x:Key="ChatBubblePeerBrush" Color="#F2F3F5" />
+                    <SolidColorBrush x:Key="ChatBubbleMeTextBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ChatBubblePeerTextBrush" Color="#313338" />
+
+                    <!-- Buttons -->
+                    <SolidColorBrush x:Key="ButtonDefaultBrush" Color="#E3E5E8" />
+                    <SolidColorBrush x:Key="ButtonDefaultHoverBrush" Color="#D4D7DC" />
+                    <SolidColorBrush x:Key="ButtonDangerBrush" Color="#DA373C" />
+                    <SolidColorBrush x:Key="ButtonSuccessBrush" Color="#248046" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>
     </Application.Resources>
 </Application>
