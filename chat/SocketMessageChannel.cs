@@ -32,11 +32,29 @@ public sealed class SocketMessageChannel : IDisposable
 
     public async Task<Guid> HandshakeAsync(Guid localSessionId)
     {
-        // 自分のセッションIDを送る
-        await SendAsync(localSessionId.ToString());
-        // 相手のセッションIDを受け取る
-        var response = await ReceiveAsync();
-        return response is not null ? Guid.Parse(response) : Guid.Empty;
+        // 自分のセッションIDを送る (16 bytes raw)
+        await _writeLock.WaitAsync();
+        try
+        {
+            _writer.WriteBytes(localSessionId.ToByteArray());
+            await _writer.StoreAsync();
+            await _writer.FlushAsync();
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+
+        // 相手のセッションIDを受け取る (16 bytes raw)
+        var loaded = await _reader.LoadAsync(16);
+        if (loaded < 16)
+        {
+            return Guid.Empty;
+        }
+
+        var guidBytes = new byte[16];
+        _reader.ReadBytes(guidBytes);
+        return new Guid(guidBytes);
     }
 
     public async Task SendAsync(string message)
