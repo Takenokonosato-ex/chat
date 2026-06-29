@@ -42,5 +42,3 @@ Wi-Fi Direct と Bluetooth Low Energy (BLE) を活用した、サーバー不要
 
 ※通信を行うには、双方のデバイスでWi-FiとBluetoothが有効になっている必要があります。
 
-## ライセンス
-(適宜ライセンス情報を追記してください)
