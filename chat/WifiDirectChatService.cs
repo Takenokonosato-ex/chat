@@ -15,6 +15,9 @@ namespace chat;
 public sealed class WifiDirectChatService : IDisposable
 {
     private const string ChatPort = "50001";
+    private const int SocketConnectAttempts = 10;
+    private const int SocketConnectTimeoutMs = 3000;
+    private const int SocketConnectRetryDelayMs = 1500;
     private static readonly string[] DeviceProperties = Array.Empty<string>();
 
     private readonly ChatSessionPayload _localSession;
@@ -63,38 +66,28 @@ public sealed class WifiDirectChatService : IDisposable
             return;
         }
 
-        LogDebug("StartAsync: Initializing Wi-Fi Direct publisher...");
-        _publisher = new WiFiDirectAdvertisementPublisher();
-        _publisher.StatusChanged += Publisher_StatusChanged;
-        // Intensive causes some Wi-Fi drivers to immediately Abort. Using Normal or default.
-        _publisher.Advertisement.ListenStateDiscoverability = WiFiDirectAdvertisementListenStateDiscoverability.Normal;
-
-        LogDebug("StartAsync: Creating DeviceWatcher...");
-        var selector = WiFiDirectDevice.GetDeviceSelector(WiFiDirectDeviceSelectorType.AssociationEndpoint);
-        LogDebug($"StartAsync: DeviceSelector is '{selector}'");
-        _watcher = DeviceInformation.CreateWatcher(selector, DeviceProperties);
-        _watcher.Added += Watcher_Added;
-        _watcher.Updated += Watcher_Updated;
-        _watcher.Removed += Watcher_Removed;
-        _watcher.EnumerationCompleted += Watcher_EnumerationCompleted;
-        _watcher.Stopped += Watcher_Stopped;
-
         try
         {
-            LogDebug("StartAsync: Starting publisher...");
-            _publisher.Start();
-            await Task.Delay(500); // Wait for publisher to stabilize
-
-            LogDebug("StartAsync: Starting watcher...");
-            _watcher.Start();
-
             LogDebug("StartAsync: Creating WiFiDirectConnectionListener...");
             _connectionListener = new WiFiDirectConnectionListener();
             _connectionListener.ConnectionRequested += ConnectionListener_ConnectionRequested;
 
+            LogDebug("StartAsync: Creating DeviceWatcher...");
+            var selector = WiFiDirectDevice.GetDeviceSelector(WiFiDirectDeviceSelectorType.AssociationEndpoint);
+            LogDebug($"StartAsync: DeviceSelector is '{selector}'");
+            _watcher = DeviceInformation.CreateWatcher(selector, DeviceProperties);
+            _watcher.Added += Watcher_Added;
+            _watcher.Updated += Watcher_Updated;
+            _watcher.Removed += Watcher_Removed;
+            _watcher.EnumerationCompleted += Watcher_EnumerationCompleted;
+            _watcher.Stopped += Watcher_Stopped;
+
+            LogDebug("StartAsync: Starting watcher...");
+            _watcher.Start();
+
             _isStarted = true;
-            LogDebug($"StartAsync: Started successfully. Publisher Status={_publisher.Status}");
-            StatusChanged?.Invoke(this, $"Wi-Fi Direct: Started ({_publisher.Status})");
+            LogDebug("StartAsync: Started successfully.");
+            StatusChanged?.Invoke(this, "Wi-Fi Direct: Started");
         }
         catch (Exception ex)
         {
@@ -320,21 +313,11 @@ public sealed class WifiDirectChatService : IDisposable
             LogDebug($"[Wi-Fi Direct] Endpoints found. Connecting to {endpointPairs[0].RemoteHostName}:{ChatPort}");
             await Task.Delay(2000);
 
-            try
-            {
-                _socketListener = new StreamSocketListener();
-                _socketListener.ConnectionReceived += SocketListener_ConnectionReceived;
-                await _socketListener.BindServiceNameAsync(ChatPort);
-                LogDebug($"[Wi-Fi Direct] Listening on port {ChatPort}");
-            }
-            catch (Exception ex)
-            {
-                LogDebug($"[Wi-Fi Direct] Failed to bind listener: {ex.Message}");
-            }
+            await EnsureSocketListenerAsync();
 
             _ = Task.Run(async () =>
             {
-                for (int i = 0; i < 3; i++)
+                for (int i = 0; i < SocketConnectAttempts; i++)
                 {
                     if (_channel != null) return;
 
@@ -343,7 +326,7 @@ public sealed class WifiDirectChatService : IDisposable
                         try
                         {
                             var socket = new StreamSocket();
-                            using var cts = new System.Threading.CancellationTokenSource(2000);
+                            using var cts = new System.Threading.CancellationTokenSource(SocketConnectTimeoutMs);
                             await socket.ConnectAsync(pair.RemoteHostName, ChatPort).AsTask(cts.Token);
                             if (!_dispatcherQueue.TryEnqueue(() => AttachChannel(socket, "Connected as client", isClient: true)))
                             {
@@ -359,7 +342,7 @@ public sealed class WifiDirectChatService : IDisposable
                         try
                         {
                             var socket = new StreamSocket();
-                            using var cts = new System.Threading.CancellationTokenSource(2000);
+                            using var cts = new System.Threading.CancellationTokenSource(SocketConnectTimeoutMs);
                             await socket.ConnectAsync(new Windows.Networking.HostName(ip), ChatPort).AsTask(cts.Token);
                             if (!_dispatcherQueue.TryEnqueue(() => AttachChannel(socket, $"Connected as client ({ip})", isClient: true)))
                             {
@@ -369,7 +352,7 @@ public sealed class WifiDirectChatService : IDisposable
                         }
                         catch { }
                     }
-                    await Task.Delay(2000);
+                    await Task.Delay(SocketConnectRetryDelayMs);
                 }
             });
         }
@@ -460,21 +443,11 @@ public sealed class WifiDirectChatService : IDisposable
 
             await Task.Delay(2000);
 
-            try
-            {
-                _socketListener = new StreamSocketListener();
-                _socketListener.ConnectionReceived += SocketListener_ConnectionReceived;
-                await _socketListener.BindServiceNameAsync(ChatPort);
-                StatusChanged?.Invoke(this, $"Wi-Fi Direct: listening on port {ChatPort}");
-            }
-            catch (Exception ex)
-            {
-                LogDebug($"[Wi-Fi Direct] Failed to bind listener: {ex.Message}");
-            }
+            await EnsureSocketListenerAsync();
 
             _ = Task.Run(async () =>
             {
-                for (int i = 0; i < 3; i++)
+                for (int i = 0; i < SocketConnectAttempts; i++)
                 {
                     if (_channel != null) return;
 
@@ -483,7 +456,7 @@ public sealed class WifiDirectChatService : IDisposable
                         try
                         {
                             var socket = new StreamSocket();
-                            using var cts = new System.Threading.CancellationTokenSource(2000);
+                            using var cts = new System.Threading.CancellationTokenSource(SocketConnectTimeoutMs);
                             await socket.ConnectAsync(pair.RemoteHostName, ChatPort).AsTask(cts.Token);
                             if (!_dispatcherQueue.TryEnqueue(() => AttachChannel(socket, "Connected as client", isClient: true)))
                             {
@@ -499,7 +472,7 @@ public sealed class WifiDirectChatService : IDisposable
                         try
                         {
                             var socket = new StreamSocket();
-                            using var cts = new System.Threading.CancellationTokenSource(2000);
+                            using var cts = new System.Threading.CancellationTokenSource(SocketConnectTimeoutMs);
                             await socket.ConnectAsync(new Windows.Networking.HostName(ip), ChatPort).AsTask(cts.Token);
                             if (!_dispatcherQueue.TryEnqueue(() => AttachChannel(socket, $"Connected as client ({ip})", isClient: true)))
                             {
@@ -509,7 +482,7 @@ public sealed class WifiDirectChatService : IDisposable
                         }
                         catch { }
                     }
-                    await Task.Delay(2000);
+                    await Task.Delay(SocketConnectRetryDelayMs);
                 }
             });
         }
@@ -527,6 +500,31 @@ public sealed class WifiDirectChatService : IDisposable
     private void SocketListener_ConnectionReceived(StreamSocketListener sender, StreamSocketListenerConnectionReceivedEventArgs args)
     {
         AttachChannel(args.Socket, "Connected as server", isClient: false);
+    }
+
+    private async Task EnsureSocketListenerAsync()
+    {
+        if (_socketListener is not null)
+        {
+            return;
+        }
+
+        var listener = new StreamSocketListener();
+        listener.ConnectionReceived += SocketListener_ConnectionReceived;
+
+        try
+        {
+            await listener.BindServiceNameAsync(ChatPort);
+            _socketListener = listener;
+            LogDebug($"[Wi-Fi Direct] Listening on port {ChatPort}");
+            StatusChanged?.Invoke(this, $"Wi-Fi Direct: listening on port {ChatPort}");
+        }
+        catch (Exception ex)
+        {
+            listener.ConnectionReceived -= SocketListener_ConnectionReceived;
+            listener.Dispose();
+            LogDebug($"[Wi-Fi Direct] Failed to bind listener: {ex.Message}");
+        }
     }
 
     private void AttachChannel(StreamSocket socket, string status, bool isClient)
