@@ -8,6 +8,8 @@ namespace chat;
 
 public sealed class SocketMessageChannel : IDisposable
 {
+    private const uint MaxMessageBytes = 64 * 1024;
+
     private readonly StreamSocket _socket;
     private readonly DataReader _reader;
     private readonly DataWriter _writer;
@@ -20,8 +22,7 @@ public sealed class SocketMessageChannel : IDisposable
         _reader = new DataReader(socket.InputStream)
         {
             ByteOrder = ByteOrder.LittleEndian,
-            UnicodeEncoding = UnicodeEncoding.Utf8,
-            InputStreamOptions = InputStreamOptions.Partial
+            UnicodeEncoding = UnicodeEncoding.Utf8
         };
         _writer = new DataWriter(socket.OutputStream)
         {
@@ -46,8 +47,7 @@ public sealed class SocketMessageChannel : IDisposable
         }
 
         // 相手のセッションIDを受け取る (16 bytes raw)
-        var loaded = await _reader.LoadAsync(16);
-        if (loaded < 16)
+        if (!await LoadExactAsync(16))
         {
             return Guid.Empty;
         }
@@ -78,20 +78,23 @@ public sealed class SocketMessageChannel : IDisposable
     {
         ThrowIfDisposed();
 
-        var loaded = await _reader.LoadAsync(sizeof(uint));
-        if (loaded < sizeof(uint))
+        if (!await LoadExactAsync(sizeof(uint)))
         {
             return null;
         }
 
         var length = _reader.ReadUInt32();
+        if (length > MaxMessageBytes)
+        {
+            throw new InvalidOperationException($"Received message is too large ({length} bytes).");
+        }
+
         if (length == 0)
         {
             return string.Empty;
         }
 
-        loaded = await _reader.LoadAsync(length);
-        if (loaded < length)
+        if (!await LoadExactAsync(length))
         {
             return null;
         }
@@ -119,5 +122,10 @@ public sealed class SocketMessageChannel : IDisposable
         {
             throw new ObjectDisposedException(nameof(SocketMessageChannel));
         }
+    }
+
+    private async Task<bool> LoadExactAsync(uint byteCount)
+    {
+        return await _reader.LoadAsync(byteCount) == byteCount;
     }
 }

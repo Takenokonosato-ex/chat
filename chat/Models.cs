@@ -1,6 +1,8 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 
 namespace chat
 {
@@ -29,7 +31,7 @@ namespace chat
         }
     }
 
-    public sealed class PeerViewModel
+    public sealed class PeerViewModel : INotifyPropertyChanged
     {
         public PeerViewModel(BlePeer peer)
         {
@@ -49,6 +51,8 @@ namespace chat
         public uint Nonce { get; }
         public BlePeer? BlePeer { get; private set; }
         public WifiDirectPeer? WifiDirectPeer { get; private set; }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
 
         public string ShortId => SessionId.ToString()[..8];
         public string Initial => SessionId.ToString()[..1].ToUpperInvariant();
@@ -72,11 +76,28 @@ namespace chat
         public void UpdateBle(BlePeer peer)
         {
             BlePeer = peer;
+            OnPropertyChanged(nameof(BlePeer));
+            OnPropertyChanged(nameof(RssiText));
+            OnPropertyChanged(nameof(DisplayText));
         }
 
         public void UpdateWifi(WifiDirectPeer peer)
         {
             WifiDirectPeer = peer;
+            OnPropertyChanged(nameof(WifiDirectPeer));
+            OnPropertyChanged(nameof(WifiStatusText));
+            OnPropertyChanged(nameof(DisplayText));
+        }
+
+        public void RefreshWifi()
+        {
+            OnPropertyChanged(nameof(WifiStatusText));
+            OnPropertyChanged(nameof(DisplayText));
+        }
+
+        private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
     }
 }

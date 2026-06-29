@@ -188,22 +188,24 @@ public sealed class WifiDirectChatService : IDisposable
         await ConnectToPeerInternalAsync(peer, force: true);
     }
 
-    public async Task SendMessageAsync(string message)
+    public async Task<bool> SendMessageAsync(string message)
     {
         if (_channel is null)
         {
             ErrorOccurred?.Invoke(this, "未接続です。Wi-Fi Direct 接続後に送信してください。");
-            return;
+            return false;
         }
 
         try
         {
             await _channel.SendAsync(message);
+            return true;
         }
         catch (Exception ex)
         {
             ErrorOccurred?.Invoke(this, $"Message send failed: {ex.Message}");
             CloseConnection();
+            return false;
         }
     }
 
@@ -255,8 +257,8 @@ public sealed class WifiDirectChatService : IDisposable
 
         try
         {
-            var tcs = new TaskCompletionSource<WiFiDirectDevice?>();
-            _dispatcherQueue.TryEnqueue(async () =>
+            var tcs = new TaskCompletionSource<WiFiDirectDevice?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!_dispatcherQueue.TryEnqueue(async () =>
             {
                 try
                 {
@@ -268,7 +270,7 @@ public sealed class WifiDirectChatService : IDisposable
                     bool paired = await EnsurePairedAsync(peer.DeviceInformation, connectionParams);
                     if (!paired)
                     {
-                        tcs.SetResult(null);
+                        tcs.TrySetResult(null);
                         return;
                     }
                     LogDebug($"[Wi-Fi Direct] Paired. Creating WiFiDirectDevice from ID.");
@@ -287,15 +289,18 @@ public sealed class WifiDirectChatService : IDisposable
                             d = await WiFiDirectDevice.FromIdAsync(peer.DeviceInformation.Id);
                         }
                     }
-                    tcs.SetResult(d);
+                    tcs.TrySetResult(d);
                 }
                 catch (Exception ex)
                 {
                     LogDebug($"[Wi-Fi Direct] Connection setup failed: {ex}");
                     ErrorOccurred?.Invoke(this, $"EnsurePairedエラー: {ex.Message}");
-                    tcs.SetException(ex);
+                    tcs.TrySetException(ex);
                 }
-            });
+            }))
+            {
+                tcs.TrySetException(new InvalidOperationException("Failed to enqueue Wi-Fi Direct connection setup on the UI thread."));
+            }
 
             var device = await tcs.Task;
             if (device is null)
@@ -340,7 +345,10 @@ public sealed class WifiDirectChatService : IDisposable
                             var socket = new StreamSocket();
                             using var cts = new System.Threading.CancellationTokenSource(2000);
                             await socket.ConnectAsync(pair.RemoteHostName, ChatPort).AsTask(cts.Token);
-                            _dispatcherQueue.TryEnqueue(() => AttachChannel(socket, "Connected as client", isClient: true));
+                            if (!_dispatcherQueue.TryEnqueue(() => AttachChannel(socket, "Connected as client", isClient: true)))
+                            {
+                                socket.Dispose();
+                            }
                             return;
                         }
                         catch { }
@@ -353,7 +361,10 @@ public sealed class WifiDirectChatService : IDisposable
                             var socket = new StreamSocket();
                             using var cts = new System.Threading.CancellationTokenSource(2000);
                             await socket.ConnectAsync(new Windows.Networking.HostName(ip), ChatPort).AsTask(cts.Token);
-                            _dispatcherQueue.TryEnqueue(() => AttachChannel(socket, $"Connected as client ({ip})", isClient: true));
+                            if (!_dispatcherQueue.TryEnqueue(() => AttachChannel(socket, $"Connected as client ({ip})", isClient: true)))
+                            {
+                                socket.Dispose();
+                            }
                             return;
                         }
                         catch { }
@@ -388,8 +399,8 @@ public sealed class WifiDirectChatService : IDisposable
 
         try
         {
-            var tcs = new TaskCompletionSource<WiFiDirectDevice?>();
-            _dispatcherQueue.TryEnqueue(async () =>
+            var tcs = new TaskCompletionSource<WiFiDirectDevice?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!_dispatcherQueue.TryEnqueue(async () =>
             {
                 try
                 {
@@ -401,7 +412,7 @@ public sealed class WifiDirectChatService : IDisposable
                     bool paired = await EnsurePairedAsync(request.DeviceInformation, connectionParams);
                     if (!paired)
                     {
-                        tcs.SetResult(null);
+                        tcs.TrySetResult(null);
                         return;
                     }
                     LogDebug($"[Wi-Fi Direct] Paired (Listener). Creating WiFiDirectDevice from ID.");
@@ -420,14 +431,17 @@ public sealed class WifiDirectChatService : IDisposable
                             d = await WiFiDirectDevice.FromIdAsync(request.DeviceInformation.Id);
                         }
                     }
-                    tcs.SetResult(d);
+                    tcs.TrySetResult(d);
                 }
                 catch (Exception ex)
                 {
                     LogDebug($"[Wi-Fi Direct] Listener setup failed: {ex}");
-                    tcs.SetException(ex);
+                    tcs.TrySetException(ex);
                 }
-            });
+            }))
+            {
+                tcs.TrySetException(new InvalidOperationException("Failed to enqueue Wi-Fi Direct accept setup on the UI thread."));
+            }
 
             var device = await tcs.Task;
             if (device is null)
@@ -471,7 +485,10 @@ public sealed class WifiDirectChatService : IDisposable
                             var socket = new StreamSocket();
                             using var cts = new System.Threading.CancellationTokenSource(2000);
                             await socket.ConnectAsync(pair.RemoteHostName, ChatPort).AsTask(cts.Token);
-                            _dispatcherQueue.TryEnqueue(() => AttachChannel(socket, "Connected as client", isClient: true));
+                            if (!_dispatcherQueue.TryEnqueue(() => AttachChannel(socket, "Connected as client", isClient: true)))
+                            {
+                                socket.Dispose();
+                            }
                             return;
                         }
                         catch { }
@@ -484,7 +501,10 @@ public sealed class WifiDirectChatService : IDisposable
                             var socket = new StreamSocket();
                             using var cts = new System.Threading.CancellationTokenSource(2000);
                             await socket.ConnectAsync(new Windows.Networking.HostName(ip), ChatPort).AsTask(cts.Token);
-                            _dispatcherQueue.TryEnqueue(() => AttachChannel(socket, $"Connected as client ({ip})", isClient: true));
+                            if (!_dispatcherQueue.TryEnqueue(() => AttachChannel(socket, $"Connected as client ({ip})", isClient: true)))
+                            {
+                                socket.Dispose();
+                            }
                             return;
                         }
                         catch { }
@@ -633,9 +653,15 @@ public sealed class WifiDirectChatService : IDisposable
         customPairing.PairingRequested += CustomPairing_PairingRequested;
 
         var devicePairingKinds = DevicePairingKinds.ConfirmOnly | DevicePairingKinds.DisplayPin | DevicePairingKinds.ProvidePin;
-        var result = await customPairing.PairAsync(devicePairingKinds, DevicePairingProtectionLevel.Default, connectionParams);
-
-        customPairing.PairingRequested -= CustomPairing_PairingRequested;
+        DevicePairingResult result;
+        try
+        {
+            result = await customPairing.PairAsync(devicePairingKinds, DevicePairingProtectionLevel.Default, connectionParams);
+        }
+        finally
+        {
+            customPairing.PairingRequested -= CustomPairing_PairingRequested;
+        }
 
         if (result.Status is not DevicePairingResultStatus.Paired and not DevicePairingResultStatus.AlreadyPaired)
         {

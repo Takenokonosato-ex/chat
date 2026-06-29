@@ -61,6 +61,8 @@ namespace chat
             Closed += MainWindow_Closed;
 
             InitializeAnimations();
+            UpdateStatusDisplay();
+            SyncUI();
         }
 
         // ─────────────────────────────────────────────
@@ -119,15 +121,18 @@ namespace chat
                 return;
             }
 
-            MessageBox.Text = "";
-
             if (!_wifiDirectChat.IsConnected)
             {
                 ShowError("未接続です。Wi-Fi Direct 接続後に送信してください。");
                 return;
             }
 
-            await _wifiDirectChat.SendMessageAsync(message);
+            if (!await _wifiDirectChat.SendMessageAsync(message))
+            {
+                return;
+            }
+
+            MessageBox.Text = "";
             _chatMessages.Add(new ChatMessageViewModel
             {
                 Sender = "Me",
