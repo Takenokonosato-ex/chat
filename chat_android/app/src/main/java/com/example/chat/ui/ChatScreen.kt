@@ -128,9 +128,17 @@ fun DrawerContent(viewModel: ChatViewModel) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("CONTROLS", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DiscordTextSecondary)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                    Button(onClick = { viewModel.startAdvertising() }, colors = ButtonDefaults.buttonColors(containerColor = DiscordBlurple)) { Text("Adv", fontSize = 12.sp) }
-                    Button(onClick = { viewModel.startScanning() }, colors = ButtonDefaults.buttonColors(containerColor = DiscordBlurple)) { Text("Scan", fontSize = 12.sp) }
-                    Button(onClick = { viewModel.startWifi() }, colors = ButtonDefaults.buttonColors(containerColor = DiscordBlurple)) { Text("WFD", fontSize = 12.sp) }
+                    Button(
+                        onClick = {
+                            viewModel.startAdvertising()
+                            viewModel.startScanning()
+                            viewModel.startWifi()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = DiscordBlurple),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Start Scan", fontSize = 12.sp)
+                    }
                 }
                 if (isConnected) {
                     Button(
