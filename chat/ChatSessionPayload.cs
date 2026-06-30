@@ -23,31 +23,7 @@ public readonly record struct ChatSessionPayload(Guid SessionId, uint Nonce)
     {
         var bytes = new byte[16];
         var nameBytes = Encoding.UTF8.GetBytes(name);
-
-        int safeLength = 0;
-        int i = 0;
-        while (i < nameBytes.Length)
-        {
-            byte b = nameBytes[i];
-            int charLen;
-            if ((b & 0x80) == 0) charLen = 1;
-            else if ((b & 0xE0) == 0xC0) charLen = 2;
-            else if ((b & 0xF0) == 0xE0) charLen = 3;
-            else if ((b & 0xF8) == 0xF0) charLen = 4;
-            else charLen = 1;
-
-            if (safeLength + charLen <= 16)
-            {
-                safeLength += charLen;
-                i += charLen;
-            }
-            else
-            {
-                break;
-            }
-        }
-
-        Array.Copy(nameBytes, 0, bytes, 0, safeLength);
+        Array.Copy(nameBytes, 0, bytes, 0, Math.Min(nameBytes.Length, 16));
         return new Guid(bytes);
     }
 
