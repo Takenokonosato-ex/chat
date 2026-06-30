@@ -221,7 +221,7 @@ public sealed class WifiDirectChatService : IDisposable
         _wifiPeersByDeviceId.Clear();
         _wifiPeersBySession.Clear();
         _blePeers.Clear();
-        _pendingDevices.Clear();
+        _pendingDevicesById.Clear();
         _isStarted = false;
         _isConnecting = false;
         StatusChanged?.Invoke(this, "Wi-Fi Direct: Stopped");
@@ -288,28 +288,11 @@ public sealed class WifiDirectChatService : IDisposable
         else
         {
             // すでにWatcherで発見済みの保留中Wi-Fi Directデバイスから探す
-            string? matchedId = null;
-            DeviceInformation? matchedDevice = null;
-            foreach (var kvp in _pendingDevices)
+            var newPeer = TryCreatePeerFromPendingDevices(session);
+            if (newPeer != null)
             {
-                if (TryMatchBlePeer(kvp.Value.Name, out var matchedSession) && matchedSession == session)
-                {
-                    matchedId = kvp.Key;
-                    matchedDevice = kvp.Value;
-                    break;
-                }
-            }
-
-            if (matchedId != null && matchedDevice != null)
-            {
-                LogDebug($"AddBlePeerAsync: Matched pending Wi-Fi Direct peer! Name={matchedDevice.Name}");
-                _pendingDevices.Remove(matchedId);
-                var newPeer = new WifiDirectPeer(matchedDevice, session);
-                _wifiPeersByDeviceId[matchedId] = newPeer;
-                _wifiPeersBySession[session] = newPeer;
                 PeerDiscovered?.Invoke(this, newPeer);
                 StatusChanged?.Invoke(this, $"Wi-Fi Direct peer: {session.SessionId.ToString()[..8]}");
-
                 await ConnectToPeerInternalAsync(newPeer, force: false);
             }
         }
@@ -463,45 +446,15 @@ public sealed class WifiDirectChatService : IDisposable
             }
 
             LogDebug($"[Wi-Fi Direct] Endpoints found. Connecting to {endpointPairs[0].RemoteHostName}:{ChatPort}");
-            await Task.Delay(2000);
+            await Task.Delay(1000);
 
             await EnsureSocketListenerAsync();
 
             var socketConnected = await TryConnectSocketsAsync(endpointPairs);
             if (!socketConnected)
             {
-                for (int i = 0; i < 4; i++)
-                {
-                    if (_channel != null) return;
-
-                    foreach (var pair in endpointPairs)
-                    {
-                        try
-                        {
-                            var socket = new StreamSocket();
-                           using var cts = new System.Threading.CancellationTokenSource(3000);
-                            await socket.ConnectAsync(pair.RemoteHostName, ChatPort).AsTask(cts.Token);
-                            _dispatcherQueue.TryEnqueue(() => AttachChannel(socket, "Connected as client", isClient: true));
-                            return;
-                        }
-                        catch { }
-                    }
-
-                    foreach (var ip in new[] { "192.168.49.1", "192.168.137.1" })
-                    {
-                        try
-                        {
-                            var socket = new StreamSocket();
-                           using var cts = new System.Threading.CancellationTokenSource(3000);
-                            await socket.ConnectAsync(new Windows.Networking.HostName(ip), ChatPort).AsTask(cts.Token);
-                            _dispatcherQueue.TryEnqueue(() => AttachChannel(socket, $"Connected as client ({ip})", isClient: true));
-                            return;
-                        }
-                        catch { }
-                    }
-                    await Task.Delay(2000);
-                }
-            });
+                StatusChanged?.Invoke(this, "Wi-Fi Direct: waiting for peer socket");
+            }
         }
         catch (Exception ex)
         {
@@ -653,39 +606,57 @@ public sealed class WifiDirectChatService : IDisposable
         {
             for (int attempt = 1; attempt <= SocketConnectAttempts; attempt++)
             {
-                for (int i = 0; i < 4; i++)
+                if (_channel != null)
                 {
                     return true;
                 }
 
-                    foreach (var pair in endpointPairs)
+                foreach (var pair in endpointPairs)
+                {
+                    if (await TryConnectSocketAsync(pair.RemoteHostName, $"Connected as client (attempt {attempt})"))
                     {
-                        try
-                        {
-                            var socket = new StreamSocket();
-                           using var cts = new System.Threading.CancellationTokenSource(3000);
-                            await socket.ConnectAsync(pair.RemoteHostName, ChatPort).AsTask(cts.Token);
-                            _dispatcherQueue.TryEnqueue(() => AttachChannel(socket, "Connected as client", isClient: true));
-                            return;
-                        }
-                        catch { }
+                        return true;
                     }
-
-                    foreach (var ip in new[] { "192.168.49.1", "192.168.137.1" })
-                    {
-                        try
-                        {
-                            var socket = new StreamSocket();
-                           using var cts = new System.Threading.CancellationTokenSource(3000);
-                            await socket.ConnectAsync(new Windows.Networking.HostName(ip), ChatPort).AsTask(cts.Token);
-                            _dispatcherQueue.TryEnqueue(() => AttachChannel(socket, $"Connected as client ({ip})", isClient: true));
-                            return;
-                        }
-                        catch { }
-                    }
-                    await Task.Delay(2000);
                 }
-            });
+
+                foreach (var host in FallbackHosts)
+                {
+                    if (await TryConnectSocketAsync(host, $"Connected as client ({host.DisplayName})"))
+                    {
+                        return true;
+                    }
+                }
+
+                await Task.Delay(SocketConnectRetryDelayMs);
+            }
+
+            LogDebug("[Wi-Fi Direct] Socket connect attempts exhausted.");
+            return _channel != null;
+        });
+    }
+
+    private async Task<bool> TryConnectSocketAsync(HostName hostName, string status)
+    {
+        StreamSocket? socket = null;
+        try
+        {
+            socket = new StreamSocket();
+            using var cts = new System.Threading.CancellationTokenSource(SocketConnectTimeoutMs);
+            await socket.ConnectAsync(hostName, ChatPort).AsTask(cts.Token);
+
+            var connectedSocket = socket;
+            socket = null;
+            if (!_dispatcherQueue.TryEnqueue(() => AttachChannel(connectedSocket, status, isClient: true)))
+            {
+                connectedSocket.Dispose();
+                return false;
+            }
+
+            return true;
+        }
+        catch (TaskCanceledException)
+        {
+            return false;
         }
         catch (Exception ex)
         {
@@ -864,8 +835,6 @@ public sealed class WifiDirectChatService : IDisposable
         return _localSession.Nonce < remoteSession.Nonce;
     }
 
-    private readonly Dictionary<string, DeviceInformation> _pendingDevices = new();
-
     private WifiDirectPeer? TryCreatePeerFromPendingDevices(ChatSessionPayload session)
     {
         foreach (var deviceInfo in _pendingDevicesById.Values.ToArray())
@@ -888,7 +857,6 @@ public sealed class WifiDirectChatService : IDisposable
 
     private WifiDirectPeer AddWifiPeer(DeviceInformation deviceInfo, ChatSessionPayload session)
     {
-        _pendingDeviceIds.Remove(deviceInfo.Id);
         _pendingDevicesById.Remove(deviceInfo.Id);
 
         var peer = new WifiDirectPeer(deviceInfo, session);
@@ -939,7 +907,7 @@ public sealed class WifiDirectChatService : IDisposable
         else
         {
             // BLEでまだ発見されていない場合はキャッシュに追加してUpdatedで再試行
-            _pendingDevices[args.Id] = args;
+            _pendingDevicesById[args.Id] = args;
             LogDebug($"Watcher_Added: No BLE match yet. Cached. Name={args.Name}");
         }
     }
@@ -952,20 +920,17 @@ public sealed class WifiDirectChatService : IDisposable
             existingPeer.Update(args);
             PeerDiscovered?.Invoke(this, existingPeer);
         }
-        else if (_pendingDevices.TryGetValue(args.Id, out var cachedInfo))
+        else if (_pendingDevicesById.TryGetValue(args.Id, out var cachedInfo))
         {
             try
             {
                 var deviceInfo = await DeviceInformation.CreateFromIdAsync(args.Id, DeviceProperties);
-                _pendingDevices[args.Id] = deviceInfo;
+                _pendingDevicesById[args.Id] = deviceInfo;
                 Debug.WriteLine($"[Watcher_Updated retry] Name={deviceInfo.Name}");
 
                 if (TryMatchBlePeer(deviceInfo.Name, out var session))
                 {
-                    _pendingDevices.Remove(args.Id);
-                    var peer = new WifiDirectPeer(deviceInfo, session);
-                    _wifiPeersByDeviceId[deviceInfo.Id] = peer;
-                    _wifiPeersBySession[session] = peer;
+                    var peer = AddWifiPeer(deviceInfo, session);
                     PeerDiscovered?.Invoke(this, peer);
                     StatusChanged?.Invoke(this, $"Wi-Fi Direct peer: {session.SessionId.ToString()[..8]}");
 
@@ -982,7 +947,7 @@ public sealed class WifiDirectChatService : IDisposable
     private void Watcher_Removed(DeviceWatcher sender, DeviceInformationUpdate args)
     {
         LogDebug($"Watcher_Removed: Id={args.Id}");
-        _pendingDevices.Remove(args.Id);
+        _pendingDevicesById.Remove(args.Id);
         if (_wifiPeersByDeviceId.Remove(args.Id, out var peer))
         {
             _wifiPeersBySession.Remove(peer.Session);
