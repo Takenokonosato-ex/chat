@@ -15,13 +15,27 @@ namespace chat;
 public sealed class WifiDirectChatService : IDisposable
 {
     private const string ChatPort = "50001";
+    private const int SocketConnectAttempts = 10;
+    private const int SocketConnectTimeoutMs = 3000;
+    private const int SocketConnectRetryDelayMs = 1500;
+    private const int PublisherStartTimeoutMs = 3000;
+    private const int ConnectionRetryCooldownSeconds = 10;
     private static readonly string[] DeviceProperties = Array.Empty<string>();
+    private static readonly HostName[] FallbackHosts =
+    {
+        new("192.168.49.1"),
+        new("192.168.137.1")
+    };
 
     private readonly ChatSessionPayload _localSession;
     private readonly DispatcherQueue _dispatcherQueue;
+    private readonly object _connectionGate = new();
     private readonly Dictionary<string, WifiDirectPeer> _wifiPeersByDeviceId = new();
     private readonly Dictionary<ChatSessionPayload, WifiDirectPeer> _wifiPeersBySession = new();
     private readonly Dictionary<ChatSessionPayload, BlePeer> _blePeers = new();
+    private readonly Dictionary<string, DeviceInformation> _pendingDevicesById = new();
+    private readonly Dictionary<ChatSessionPayload, DateTimeOffset> _lastConnectionAttempts = new();
+    private readonly HashSet<ChatSessionPayload> _connectingSessions = new();
     private WiFiDirectAdvertisementPublisher? _publisher;
     private WiFiDirectConnectionListener? _connectionListener;
     private DeviceWatcher? _watcher;
@@ -63,38 +77,30 @@ public sealed class WifiDirectChatService : IDisposable
             return;
         }
 
-        LogDebug("StartAsync: Initializing Wi-Fi Direct publisher...");
-        _publisher = new WiFiDirectAdvertisementPublisher();
-        _publisher.StatusChanged += Publisher_StatusChanged;
-        // Intensive causes some Wi-Fi drivers to immediately Abort. Using Normal or default.
-        _publisher.Advertisement.ListenStateDiscoverability = WiFiDirectAdvertisementListenStateDiscoverability.Normal;
-
-        LogDebug("StartAsync: Creating DeviceWatcher...");
-        var selector = WiFiDirectDevice.GetDeviceSelector(WiFiDirectDeviceSelectorType.AssociationEndpoint);
-        LogDebug($"StartAsync: DeviceSelector is '{selector}'");
-        _watcher = DeviceInformation.CreateWatcher(selector, DeviceProperties);
-        _watcher.Added += Watcher_Added;
-        _watcher.Updated += Watcher_Updated;
-        _watcher.Removed += Watcher_Removed;
-        _watcher.EnumerationCompleted += Watcher_EnumerationCompleted;
-        _watcher.Stopped += Watcher_Stopped;
-
         try
         {
-            LogDebug("StartAsync: Starting publisher...");
-            _publisher.Start();
-            await Task.Delay(500); // Wait for publisher to stabilize
-
-            LogDebug("StartAsync: Starting watcher...");
-            _watcher.Start();
-
             LogDebug("StartAsync: Creating WiFiDirectConnectionListener...");
             _connectionListener = new WiFiDirectConnectionListener();
             _connectionListener.ConnectionRequested += ConnectionListener_ConnectionRequested;
 
+            LogDebug("StartAsync: Creating DeviceWatcher...");
+            var selector = WiFiDirectDevice.GetDeviceSelector(WiFiDirectDeviceSelectorType.AssociationEndpoint);
+            LogDebug($"StartAsync: DeviceSelector is '{selector}'");
+            _watcher = DeviceInformation.CreateWatcher(selector, DeviceProperties);
+            _watcher.Added += Watcher_Added;
+            _watcher.Updated += Watcher_Updated;
+            _watcher.Removed += Watcher_Removed;
+            _watcher.EnumerationCompleted += Watcher_EnumerationCompleted;
+            _watcher.Stopped += Watcher_Stopped;
+
+            LogDebug("StartAsync: Starting watcher...");
+            _watcher.Start();
+
             _isStarted = true;
-            LogDebug($"StartAsync: Started successfully. Publisher Status={_publisher.Status}");
-            StatusChanged?.Invoke(this, $"Wi-Fi Direct: Started ({_publisher.Status})");
+            LogDebug("StartAsync: Started successfully.");
+            StatusChanged?.Invoke(this, "Wi-Fi Direct: Started");
+
+            _ = StartPublisherBestEffortAsync();
         }
         catch (Exception ex)
         {
@@ -104,6 +110,75 @@ public sealed class WifiDirectChatService : IDisposable
         }
 
         await Task.CompletedTask;
+    }
+
+    private async Task StartPublisherBestEffortAsync()
+    {
+        if (!_isStarted || _publisher is not null)
+        {
+            return;
+        }
+
+        StatusChanged?.Invoke(this, "Wi-Fi Direct: publisher starting");
+
+        var startTask = Task.Run(() =>
+        {
+            LogDebug("Publisher: Initializing Wi-Fi Direct publisher...");
+            var publisher = new WiFiDirectAdvertisementPublisher();
+            publisher.Advertisement.ListenStateDiscoverability = WiFiDirectAdvertisementListenStateDiscoverability.Normal;
+
+            LogDebug("Publisher: Starting...");
+            publisher.Start();
+            return publisher;
+        });
+
+        var completedTask = await Task.WhenAny(startTask, Task.Delay(PublisherStartTimeoutMs));
+        if (completedTask != startTask)
+        {
+            LogDebug("Publisher: start timed out; continuing without blocking the app.");
+            StatusChanged?.Invoke(this, "Wi-Fi Direct: publisher start timed out");
+            _ = CompletePublisherStartAsync(startTask);
+            return;
+        }
+
+        try
+        {
+            var publisher = await startTask;
+            AcceptStartedPublisher(publisher);
+        }
+        catch (Exception ex)
+        {
+            LogDebug($"Publisher: start failed: {ex.Message}");
+            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct publisher start failed: {ex.Message}");
+        }
+    }
+
+    private async Task CompletePublisherStartAsync(Task<WiFiDirectAdvertisementPublisher> startTask)
+    {
+        try
+        {
+            var publisher = await startTask;
+            AcceptStartedPublisher(publisher);
+        }
+        catch (Exception ex)
+        {
+            LogDebug($"Publisher: delayed start failed: {ex.Message}");
+            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct publisher start failed: {ex.Message}");
+        }
+    }
+
+    private void AcceptStartedPublisher(WiFiDirectAdvertisementPublisher publisher)
+    {
+        if (!_isStarted || _publisher is not null)
+        {
+            TryStopPublisher(publisher);
+            return;
+        }
+
+        _publisher = publisher;
+        _publisher.StatusChanged += Publisher_StatusChanged;
+        LogDebug($"Publisher: Started with status {_publisher.Status}");
+        StatusChanged?.Invoke(this, $"Wi-Fi Direct publisher: {_publisher.Status}");
     }
 
     public void Stop()
@@ -139,19 +214,7 @@ public sealed class WifiDirectChatService : IDisposable
         if (_publisher is not null)
         {
             _publisher.StatusChanged -= Publisher_StatusChanged;
-            try
-            {
-                if (_publisher.Status == WiFiDirectAdvertisementPublisherStatus.Started ||
-                    _publisher.Status == WiFiDirectAdvertisementPublisherStatus.Created)
-                {
-                    _publisher.Stop();
-                }
-            }
-            catch (Exception ex)
-            {
-                ErrorOccurred?.Invoke(this, $"Wi-Fi Direct publisher stop failed: {ex.Message}");
-            }
-
+            TryStopPublisher(_publisher);
             _publisher = null;
         }
 
@@ -162,6 +225,54 @@ public sealed class WifiDirectChatService : IDisposable
         _isStarted = false;
         _isConnecting = false;
         StatusChanged?.Invoke(this, "Wi-Fi Direct: Stopped");
+    }
+
+    private bool TryBeginConnection(ChatSessionPayload session, bool force)
+    {
+        lock (_connectionGate)
+        {
+            if (IsConnected || _connectingSessions.Contains(session))
+            {
+                return false;
+            }
+
+            if (!force &&
+                _lastConnectionAttempts.TryGetValue(session, out var lastAttempt) &&
+                DateTimeOffset.UtcNow - lastAttempt < TimeSpan.FromSeconds(ConnectionRetryCooldownSeconds))
+            {
+                return false;
+            }
+
+            _connectingSessions.Add(session);
+            _lastConnectionAttempts[session] = DateTimeOffset.UtcNow;
+            _isConnecting = true;
+            return true;
+        }
+    }
+
+    private void EndConnection(ChatSessionPayload session)
+    {
+        lock (_connectionGate)
+        {
+            _connectingSessions.Remove(session);
+            _isConnecting = _connectingSessions.Count > 0;
+        }
+    }
+
+    private void TryStopPublisher(WiFiDirectAdvertisementPublisher publisher)
+    {
+        try
+        {
+            if (publisher.Status == WiFiDirectAdvertisementPublisherStatus.Started ||
+                publisher.Status == WiFiDirectAdvertisementPublisherStatus.Created)
+            {
+                publisher.Stop();
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct publisher stop failed: {ex.Message}");
+        }
     }
 
     public async Task AddBlePeerAsync(BlePeer peer)
@@ -209,22 +320,24 @@ public sealed class WifiDirectChatService : IDisposable
         await ConnectToPeerInternalAsync(peer, force: true);
     }
 
-    public async Task SendMessageAsync(string message)
+    public async Task<bool> SendMessageAsync(string message)
     {
         if (_channel is null)
         {
             ErrorOccurred?.Invoke(this, "未接続です。Wi-Fi Direct 接続後に送信してください。");
-            return;
+            return false;
         }
 
         try
         {
             await _channel.SendAsync(message);
+            return true;
         }
         catch (Exception ex)
         {
             ErrorOccurred?.Invoke(this, $"Message send failed: {ex.Message}");
             CloseConnection();
+            return false;
         }
     }
 
@@ -261,7 +374,7 @@ public sealed class WifiDirectChatService : IDisposable
 
     private async Task ConnectToPeerInternalAsync(WifiDirectPeer peer, bool force)
     {
-        if (IsConnected || _isConnecting)
+        if (IsConnected)
         {
             return;
         }
@@ -271,13 +384,18 @@ public sealed class WifiDirectChatService : IDisposable
             return;
         }
 
-        _isConnecting = true;
+        if (!TryBeginConnection(peer.Session, force))
+        {
+            LogDebug($"[Wi-Fi Direct] Skipping duplicate connection attempt to {peer.DeviceInformation.Name}");
+            return;
+        }
+
         StatusChanged?.Invoke(this, $"Wi-Fi Direct: connecting to {peer.DeviceInformation.Name}");
 
         try
         {
-            var tcs = new TaskCompletionSource<WiFiDirectDevice?>();
-            _dispatcherQueue.TryEnqueue(async () =>
+            var tcs = new TaskCompletionSource<WiFiDirectDevice?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!_dispatcherQueue.TryEnqueue(async () =>
             {
                 try
                 {
@@ -289,7 +407,7 @@ public sealed class WifiDirectChatService : IDisposable
                     bool paired = await EnsurePairedAsync(peer.DeviceInformation, connectionParams);
                     if (!paired)
                     {
-                        tcs.SetResult(null);
+                        tcs.TrySetResult(null);
                         return;
                     }
                     LogDebug($"[Wi-Fi Direct] Paired. Creating WiFiDirectDevice from ID.");
@@ -316,15 +434,18 @@ public sealed class WifiDirectChatService : IDisposable
                             d = await WiFiDirectDevice.FromIdAsync(peer.DeviceInformation.Id);
                         }
                     }
-                    tcs.SetResult(d);
+                    tcs.TrySetResult(d);
                 }
                 catch (Exception ex)
                 {
                     LogDebug($"[Wi-Fi Direct] Connection setup failed: {ex}");
                     ErrorOccurred?.Invoke(this, $"EnsurePairedエラー: {ex.Message}");
-                    tcs.SetException(ex);
+                    tcs.TrySetException(ex);
                 }
-            });
+            }))
+            {
+                tcs.TrySetException(new InvalidOperationException("Failed to enqueue Wi-Fi Direct connection setup on the UI thread."));
+            }
 
             var device = await tcs.Task;
             if (device is null)
@@ -344,19 +465,10 @@ public sealed class WifiDirectChatService : IDisposable
             LogDebug($"[Wi-Fi Direct] Endpoints found. Connecting to {endpointPairs[0].RemoteHostName}:{ChatPort}");
             await Task.Delay(2000);
 
-            try
-            {
-                _socketListener = new StreamSocketListener();
-                _socketListener.ConnectionReceived += SocketListener_ConnectionReceived;
-                await _socketListener.BindServiceNameAsync(ChatPort);
-                LogDebug($"[Wi-Fi Direct] Listening on port {ChatPort}");
-            }
-            catch (Exception ex)
-            {
-                LogDebug($"[Wi-Fi Direct] Failed to bind listener: {ex.Message}");
-            }
+            await EnsureSocketListenerAsync();
 
-            _ = Task.Run(async () =>
+            var socketConnected = await TryConnectSocketsAsync(endpointPairs);
+            if (!socketConnected)
             {
                 for (int i = 0; i < 4; i++)
                 {
@@ -398,7 +510,7 @@ public sealed class WifiDirectChatService : IDisposable
         }
         finally
         {
-            _isConnecting = false;
+            EndConnection(peer.Session);
         }
     }
 
@@ -417,8 +529,8 @@ public sealed class WifiDirectChatService : IDisposable
 
         try
         {
-            var tcs = new TaskCompletionSource<WiFiDirectDevice?>();
-            _dispatcherQueue.TryEnqueue(async () =>
+            var tcs = new TaskCompletionSource<WiFiDirectDevice?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!_dispatcherQueue.TryEnqueue(async () =>
             {
                 try
                 {
@@ -430,7 +542,7 @@ public sealed class WifiDirectChatService : IDisposable
                     bool paired = await EnsurePairedAsync(request.DeviceInformation, connectionParams);
                     if (!paired)
                     {
-                        tcs.SetResult(null);
+                        tcs.TrySetResult(null);
                         return;
                     }
                     LogDebug($"[Wi-Fi Direct] Paired (Listener). Creating WiFiDirectDevice from ID.");
@@ -457,14 +569,17 @@ public sealed class WifiDirectChatService : IDisposable
                             d = await WiFiDirectDevice.FromIdAsync(request.DeviceInformation.Id);
                         }
                     }
-                    tcs.SetResult(d);
+                    tcs.TrySetResult(d);
                 }
                 catch (Exception ex)
                 {
                     LogDebug($"[Wi-Fi Direct] Listener setup failed: {ex}");
-                    tcs.SetException(ex);
+                    tcs.TrySetException(ex);
                 }
-            });
+            }))
+            {
+                tcs.TrySetException(new InvalidOperationException("Failed to enqueue Wi-Fi Direct accept setup on the UI thread."));
+            }
 
             var device = await tcs.Task;
             if (device is null)
@@ -483,23 +598,65 @@ public sealed class WifiDirectChatService : IDisposable
 
             await Task.Delay(1000);
 
-            try
-            {
-                _socketListener = new StreamSocketListener();
-                _socketListener.ConnectionReceived += SocketListener_ConnectionReceived;
-                await _socketListener.BindServiceNameAsync(ChatPort);
-                StatusChanged?.Invoke(this, $"Wi-Fi Direct: listening on port {ChatPort}");
-            }
-            catch (Exception ex)
-            {
-                LogDebug($"[Wi-Fi Direct] Failed to bind listener: {ex.Message}");
-            }
+            await EnsureSocketListenerAsync();
 
-            _ = Task.Run(async () =>
+            var socketConnected = await TryConnectSocketsAsync(endpointPairs);
+            if (!socketConnected)
+            {
+                StatusChanged?.Invoke(this, "Wi-Fi Direct: waiting for peer socket");
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct accept failed: {ex.Message} Mobile Hotspot が ON の場合は OFF にしてください。");
+            CloseConnection();
+        }
+        finally
+        {
+            _isConnecting = false;
+        }
+    }
+
+    private void SocketListener_ConnectionReceived(StreamSocketListener sender, StreamSocketListenerConnectionReceivedEventArgs args)
+    {
+        AttachChannel(args.Socket, "Connected as server", isClient: false);
+    }
+
+    private async Task EnsureSocketListenerAsync()
+    {
+        if (_socketListener is not null)
+        {
+            return;
+        }
+
+        var listener = new StreamSocketListener();
+        listener.ConnectionReceived += SocketListener_ConnectionReceived;
+
+        try
+        {
+            await listener.BindServiceNameAsync(ChatPort);
+            _socketListener = listener;
+            LogDebug($"[Wi-Fi Direct] Listening on port {ChatPort}");
+            StatusChanged?.Invoke(this, $"Wi-Fi Direct: listening on port {ChatPort}");
+        }
+        catch (Exception ex)
+        {
+            listener.ConnectionReceived -= SocketListener_ConnectionReceived;
+            listener.Dispose();
+            LogDebug($"[Wi-Fi Direct] Failed to bind listener: {ex.Message}");
+        }
+    }
+
+    private async Task<bool> TryConnectSocketsAsync(IReadOnlyList<EndpointPair> endpointPairs)
+    {
+        return await Task.Run(async () =>
+        {
+            for (int attempt = 1; attempt <= SocketConnectAttempts; attempt++)
             {
                 for (int i = 0; i < 4; i++)
                 {
-                    if (_channel != null) return;
+                    return true;
+                }
 
                     foreach (var pair in endpointPairs)
                     {
@@ -532,18 +689,13 @@ public sealed class WifiDirectChatService : IDisposable
         }
         catch (Exception ex)
         {
-            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct accept failed: {ex.Message} Mobile Hotspot が ON の場合は OFF にしてください。");
-            CloseConnection();
+            LogDebug($"[Wi-Fi Direct] Socket connect to {hostName.DisplayName}:{ChatPort} failed: {ex.Message}");
+            return false;
         }
         finally
         {
-            _isConnecting = false;
+            socket?.Dispose();
         }
-    }
-
-    private void SocketListener_ConnectionReceived(StreamSocketListener sender, StreamSocketListenerConnectionReceivedEventArgs args)
-    {
-        AttachChannel(args.Socket, "Connected as server", isClient: false);
     }
 
     private void AttachChannel(StreamSocket socket, string status, bool isClient)
@@ -667,12 +819,30 @@ public sealed class WifiDirectChatService : IDisposable
             }
         }
 
-        customPairing.PairingRequested += CustomPairing_PairingRequested;
-
         var devicePairingKinds = DevicePairingKinds.ConfirmOnly | DevicePairingKinds.DisplayPin | DevicePairingKinds.ProvidePin;
-        var result = await customPairing.PairAsync(devicePairingKinds, DevicePairingProtectionLevel.Default, connectionParams);
+        DevicePairingResult result;
+        var pairingRequestedAttached = false;
+        try
+        {
+            try
+            {
+                customPairing.PairingRequested += CustomPairing_PairingRequested;
+                pairingRequestedAttached = true;
+            }
+            catch (Exception ex)
+            {
+                LogDebug($"[Wi-Fi Direct] PairingRequested handler unavailable: {ex.Message}");
+            }
 
-        customPairing.PairingRequested -= CustomPairing_PairingRequested;
+            result = await customPairing.PairAsync(devicePairingKinds, DevicePairingProtectionLevel.Default, connectionParams);
+        }
+        finally
+        {
+            if (pairingRequestedAttached)
+            {
+                customPairing.PairingRequested -= CustomPairing_PairingRequested;
+            }
+        }
 
         if (result.Status is not DevicePairingResultStatus.Paired and not DevicePairingResultStatus.AlreadyPaired)
         {
@@ -696,14 +866,54 @@ public sealed class WifiDirectChatService : IDisposable
 
     private readonly Dictionary<string, DeviceInformation> _pendingDevices = new();
 
+    private WifiDirectPeer? TryCreatePeerFromPendingDevices(ChatSessionPayload session)
+    {
+        foreach (var deviceInfo in _pendingDevicesById.Values.ToArray())
+        {
+            if (DeviceNameMatchesSession(deviceInfo.Name, session))
+            {
+                return AddWifiPeer(deviceInfo, session);
+            }
+        }
+
+        if (_blePeers.Count == 1 && _pendingDevicesById.Count == 1)
+        {
+            var deviceInfo = _pendingDevicesById.Values.First();
+            LogDebug($"Pending fallback: pairing the only BLE peer with the only Wi-Fi Direct device. Name={deviceInfo.Name}");
+            return AddWifiPeer(deviceInfo, session);
+        }
+
+        return null;
+    }
+
+    private WifiDirectPeer AddWifiPeer(DeviceInformation deviceInfo, ChatSessionPayload session)
+    {
+        _pendingDeviceIds.Remove(deviceInfo.Id);
+        _pendingDevicesById.Remove(deviceInfo.Id);
+
+        var peer = new WifiDirectPeer(deviceInfo, session);
+        _wifiPeersByDeviceId[deviceInfo.Id] = peer;
+        _wifiPeersBySession[session] = peer;
+        return peer;
+    }
+
+    private bool DeviceNameMatchesSession(string deviceName, ChatSessionPayload session)
+    {
+        if (!_blePeers.TryGetValue(session, out var blePeer))
+        {
+            return false;
+        }
+
+        return !string.IsNullOrEmpty(blePeer.PcName) &&
+            deviceName.Contains(blePeer.PcName, StringComparison.OrdinalIgnoreCase);
+    }
+
     private bool TryMatchBlePeer(string deviceName, out ChatSessionPayload session)
     {
         session = default;
         foreach (var kvp in _blePeers)
         {
-            var blePeer = kvp.Value;
-            if (!string.IsNullOrEmpty(blePeer.PcName) &&
-                deviceName.Contains(blePeer.PcName, StringComparison.OrdinalIgnoreCase))
+            if (DeviceNameMatchesSession(deviceName, kvp.Key))
             {
                 session = kvp.Key;
                 return true;
@@ -720,9 +930,7 @@ public sealed class WifiDirectChatService : IDisposable
         if (TryMatchBlePeer(args.Name, out var session))
         {
             LogDebug($"Watcher_Added: Matched BLE peer! Session={session.SessionId}");
-            var peer = new WifiDirectPeer(args, session);
-            _wifiPeersByDeviceId[args.Id] = peer;
-            _wifiPeersBySession[session] = peer;
+            var peer = AddWifiPeer(args, session);
             PeerDiscovered?.Invoke(this, peer);
             StatusChanged?.Invoke(this, $"Wi-Fi Direct peer: {session.SessionId.ToString()[..8]}");
 
