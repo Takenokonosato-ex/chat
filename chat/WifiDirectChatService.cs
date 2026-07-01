@@ -385,6 +385,7 @@ public sealed class WifiDirectChatService : IDisposable
                     var connectionParams = new WiFiDirectConnectionParameters();
                     connectionParams.PreferenceOrderedConfigurationMethods.Add(WiFiDirectConfigurationMethod.PushButton);
                     connectionParams.PreferredPairingProcedure = WiFiDirectPairingProcedure.GroupOwnerNegotiation;
+                    connectionParams.GroupOwnerIntent = 0; // Client preferences (Initiator)
 
                     LogDebug($"[Wi-Fi Direct] EnsurePairedAsync to {peer.DeviceInformation.Name}");
                     bool paired = await EnsurePairedAsync(peer.DeviceInformation, connectionParams);
@@ -401,10 +402,12 @@ public sealed class WifiDirectChatService : IDisposable
                     }
                     catch (Exception ex)
                     {
-                        LogDebug($"[Wi-Fi Direct] FromIdAsync failed: {ex.Message} (HResult={ex.HResult:X8}). Trying to unpair and retry pairing...");
+                        LogDebug($"[Wi-Fi Direct] FromIdAsync failed: {ex.Message} (HResult={ex.HResult:X8}). Unpairing and waiting for OS stack to settle before retry...");
                         try
                         {
-                            await peer.DeviceInformation.Pairing.UnpairAsync();
+                            var unpairResult = await peer.DeviceInformation.Pairing.UnpairAsync();
+                            LogDebug($"[Wi-Fi Direct] Unpair completed: status={unpairResult.Status}. Delaying 1500ms for cleanup...");
+                            await Task.Delay(1500);
                         }
                         catch (Exception unpairEx)
                         {
@@ -414,6 +417,7 @@ public sealed class WifiDirectChatService : IDisposable
                         paired = await EnsurePairedAsync(peer.DeviceInformation, connectionParams);
                         if (paired)
                         {
+                            LogDebug($"[Wi-Fi Direct] Retrying FromIdAsync after unpair and repair...");
                             d = await WiFiDirectDevice.FromIdAsync(peer.DeviceInformation.Id);
                         }
                     }
@@ -421,8 +425,8 @@ public sealed class WifiDirectChatService : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    LogDebug($"[Wi-Fi Direct] Connection setup failed: {ex}");
-                    ErrorOccurred?.Invoke(this, $"EnsurePairedエラー: {ex.Message}");
+                    LogDebug($"[Wi-Fi Direct] Connection setup failed: {ex.Message} (HResult={ex.HResult:X8})\nStackTrace: {ex.StackTrace}");
+                    ErrorOccurred?.Invoke(this, $"ペアリング設定エラー (HResult: 0x{ex.HResult:X8}): {ex.Message}");
                     tcs.TrySetException(ex);
                 }
             }))
@@ -438,16 +442,25 @@ public sealed class WifiDirectChatService : IDisposable
             }
 
             SetWifiDirectDevice(device);
+
+            // Wait for DHCP and IP address assignment
+            LogDebug("[Wi-Fi Direct] L2 connected. Waiting 1500ms for IP address assignment via DHCP...");
+            await Task.Delay(1500);
+
             var endpointPairs = device.GetConnectionEndpointPairs();
             if (endpointPairs.Count == 0)
             {
-                ErrorOccurred?.Invoke(this, "Wi-Fi Direct connection failed: no endpoint pairs. L2 connection might have failed.");
-                return;
+                LogDebug("[Wi-Fi Direct] No endpoint pairs found. Retrying DHCP resolution in 1000ms...");
+                await Task.Delay(1000);
+                endpointPairs = device.GetConnectionEndpointPairs();
+                if (endpointPairs.Count == 0)
+                {
+                    ErrorOccurred?.Invoke(this, "Wi-Fi Direct connection failed: DHCP IP assignment timed out (no endpoint pairs).");
+                    return;
+                }
             }
 
             LogDebug($"[Wi-Fi Direct] Endpoints found. Connecting to {endpointPairs[0].RemoteHostName}:{ChatPort}");
-            await Task.Delay(1000);
-
             await EnsureSocketListenerAsync();
 
             var socketConnected = await TryConnectSocketsAsync(endpointPairs);
@@ -458,7 +471,9 @@ public sealed class WifiDirectChatService : IDisposable
         }
         catch (Exception ex)
         {
-            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct connect failed: {ex.Message} Mobile Hotspot が ON の場合は OFF にしてください。");
+            string errMsg = $"[Wi-Fi Direct] Connect failed: {ex.Message} (HResult={ex.HResult:X8})\nStackTrace: {ex.StackTrace}";
+            LogDebug(errMsg);
+            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct接続エラー (HResult: 0x{ex.HResult:X8}): {ex.Message}. モバイルホットスポットがONの場合はOFFにしてください。");
             CloseConnection();
         }
         finally
@@ -490,6 +505,7 @@ public sealed class WifiDirectChatService : IDisposable
                     var connectionParams = new WiFiDirectConnectionParameters();
                     connectionParams.PreferenceOrderedConfigurationMethods.Add(WiFiDirectConfigurationMethod.PushButton);
                     connectionParams.PreferredPairingProcedure = WiFiDirectPairingProcedure.GroupOwnerNegotiation;
+                    connectionParams.GroupOwnerIntent = 14; // GO preferences (Listener)
 
                     LogDebug($"[Wi-Fi Direct] EnsurePairedAsync (Listener) to {request.DeviceInformation.Name}");
                     bool paired = await EnsurePairedAsync(request.DeviceInformation, connectionParams);
@@ -506,10 +522,12 @@ public sealed class WifiDirectChatService : IDisposable
                     }
                     catch (Exception ex)
                     {
-                        LogDebug($"[Wi-Fi Direct] FromIdAsync (Listener) failed: {ex.Message} (HResult={ex.HResult:X8}). Trying to unpair and retry pairing...");
+                        LogDebug($"[Wi-Fi Direct] FromIdAsync (Listener) failed: {ex.Message} (HResult={ex.HResult:X8}). Unpairing and waiting for OS stack to settle before retry...");
                         try
                         {
-                            await request.DeviceInformation.Pairing.UnpairAsync();
+                            var unpairResult = await request.DeviceInformation.Pairing.UnpairAsync();
+                            LogDebug($"[Wi-Fi Direct] Unpair completed: status={unpairResult.Status}. Delaying 1500ms for cleanup...");
+                            await Task.Delay(1500);
                         }
                         catch (Exception unpairEx)
                         {
@@ -519,6 +537,7 @@ public sealed class WifiDirectChatService : IDisposable
                         paired = await EnsurePairedAsync(request.DeviceInformation, connectionParams);
                         if (paired)
                         {
+                            LogDebug($"[Wi-Fi Direct] Retrying FromIdAsync after unpair and repair (Listener)...");
                             d = await WiFiDirectDevice.FromIdAsync(request.DeviceInformation.Id);
                         }
                     }
@@ -526,7 +545,7 @@ public sealed class WifiDirectChatService : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    LogDebug($"[Wi-Fi Direct] Listener setup failed: {ex}");
+                    LogDebug($"[Wi-Fi Direct] Listener setup failed: {ex.Message} (HResult={ex.HResult:X8})\nStackTrace: {ex.StackTrace}");
                     tcs.TrySetException(ex);
                 }
             }))
@@ -542,15 +561,25 @@ public sealed class WifiDirectChatService : IDisposable
             }
 
             SetWifiDirectDevice(device);
+
+            // Wait for DHCP and IP address assignment
+            LogDebug("[Wi-Fi Direct] L2 connection accepted. Waiting 1500ms for IP address assignment via DHCP...");
+            await Task.Delay(1500);
+
             var endpointPairs = device.GetConnectionEndpointPairs();
             if (endpointPairs.Count == 0)
             {
-                ErrorOccurred?.Invoke(this, "Wi-Fi Direct accept failed: no endpoint pairs.");
-                return;
+                LogDebug("[Wi-Fi Direct] No endpoint pairs found (Listener). Retrying DHCP resolution in 1000ms...");
+                await Task.Delay(1000);
+                endpointPairs = device.GetConnectionEndpointPairs();
+                if (endpointPairs.Count == 0)
+                {
+                    ErrorOccurred?.Invoke(this, "Wi-Fi Direct accept failed: DHCP IP assignment timed out (no endpoint pairs).");
+                    return;
+                }
             }
 
-            await Task.Delay(1000);
-
+            LogDebug($"[Wi-Fi Direct] Endpoints found. Connecting to {endpointPairs[0].RemoteHostName}:{ChatPort}");
             await EnsureSocketListenerAsync();
 
             var socketConnected = await TryConnectSocketsAsync(endpointPairs);
@@ -561,7 +590,9 @@ public sealed class WifiDirectChatService : IDisposable
         }
         catch (Exception ex)
         {
-            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct accept failed: {ex.Message} Mobile Hotspot が ON の場合は OFF にしてください。");
+            string errMsg = $"[Wi-Fi Direct] Accept failed: {ex.Message} (HResult={ex.HResult:X8})\nStackTrace: {ex.StackTrace}";
+            LogDebug(errMsg);
+            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct受諾エラー (HResult: 0x{ex.HResult:X8}): {ex.Message}. モバイルホットスポットがONの場合はOFFにしてください。");
             CloseConnection();
         }
         finally
