@@ -65,7 +65,7 @@ public sealed class WifiDirectChatService : IDisposable
 
     public bool IsStarted => _isStarted;
 
-    public bool IsConnected => _channel is not null;
+    public bool IsConnected => _channel?.IsSecure == true;
 
     private void LogDebug(string msg)
     {
@@ -311,9 +311,9 @@ public sealed class WifiDirectChatService : IDisposable
 
     public async Task<bool> SendMessageAsync(string message)
     {
-        if (_channel is null)
+        if (_channel is null || !_channel.IsSecure)
         {
-            ErrorOccurred?.Invoke(this, "未接続です。送信前にWi-Fi Directで接続してください。");
+            ErrorOccurred?.Invoke(this, "未接続です。Wi-Fi Directの暗号化接続が完了してから送信してください。");
             return false;
         }
 
@@ -752,7 +752,7 @@ public sealed class WifiDirectChatService : IDisposable
                 StatusChanged?.Invoke(this, $"Wi-Fi Direct: 未確認の相手 {remoteSessionId}; 診断のためソケットを受け付けます");
             }
 
-            StatusChanged?.Invoke(this, $"Wi-Fi Direct: 相手の準備完了 {remoteSessionId}");
+            StatusChanged?.Invoke(this, $"Wi-Fi Direct: 暗号化通信を開始 {remoteSessionId}");
             ConnectionStateChanged?.Invoke(this, true);
 
             while (_channel == channel)
