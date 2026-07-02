@@ -16,7 +16,7 @@ public sealed class WifiDirectPeer
     public ChatSessionPayload Session { get; }
 
     public string DisplayName =>
-        $"{Session.SessionId}  Wi-Fi Direct: {DeviceInformation.Name}  {(DeviceInformation.Pairing.IsPaired ? "Paired" : "Unpaired")}";
+        $"{Session.SessionId}  Wi-Fi Direct: {DeviceInformation.Name}  {(DeviceInformation.Pairing.IsPaired ? "ペアリング済み" : "未ペアリング")}";
 
     public void Update(DeviceInformationUpdate update)
     {

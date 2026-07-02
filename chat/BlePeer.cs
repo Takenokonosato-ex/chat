@@ -26,5 +26,5 @@ public sealed class BlePeer
     public string PcName => ChatSessionPayload.DecodeNameFromGuid(SessionId);
 
     public string DisplayText =>
-        $"{SessionId}  RSSI: {RawSignalStrengthInDBm} dBm  Last seen: {LastSeen:HH:mm:ss} PC: {PcName}";
+        $"{SessionId}  RSSI: {RawSignalStrengthInDBm} dBm  最終検出: {LastSeen:HH:mm:ss} PC: {PcName}";
 }

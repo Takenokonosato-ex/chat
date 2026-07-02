@@ -14,12 +14,12 @@
     </Window.SystemBackdrop>
 
     <Grid x:Name="RootGrid" RequestedTheme="Dark">
-        <!-- ======================================== -->
-        <!-- RESOURCES: Chat Message Templates        -->
-        <!-- ======================================== -->
+    <!-- ======================================== -->
+    <!-- リソース: チャットメッセージテンプレート -->
+    <!-- ======================================== -->
         <Grid.Resources>
             <local:ChatMessageTemplateSelector x:Key="ChatTemplateSelector">
-                <!-- Sent message (right-aligned, blurple bubble) -->
+        <!-- 送信メッセージ (右寄せ) -->
                 <local:ChatMessageTemplateSelector.SentTemplate>
                     <DataTemplate x:DataType="local:ChatMessageViewModel">
                         <Grid HorizontalAlignment="Right" Margin="80,3,12,3">
@@ -39,12 +39,12 @@
                     </DataTemplate>
                 </local:ChatMessageTemplateSelector.SentTemplate>
 
-                <!-- Received message (left-aligned, with avatar) -->
+        <!-- 受信メッセージ (左寄せ、アイコン付き) -->
                 <local:ChatMessageTemplateSelector.ReceivedTemplate>
                     <DataTemplate x:DataType="local:ChatMessageViewModel">
                         <Grid HorizontalAlignment="Left" Margin="12,3,80,3">
                             <StackPanel Orientation="Horizontal" Spacing="10">
-                                <!-- Avatar -->
+                    <!-- アイコン -->
                                 <Border Width="36" Height="36" CornerRadius="18"
                                         Background="{ThemeResource AccentBrush}"
                                         VerticalAlignment="Top" Margin="0,2,0,0">
@@ -52,7 +52,7 @@
                                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                                Foreground="White" FontSize="15" FontWeight="SemiBold"/>
                                 </Border>
-                                <!-- Bubble -->
+                    <!-- 吹き出し -->
                                 <Border Background="{ThemeResource ChatBubblePeerBrush}"
                                         CornerRadius="18,18,18,4" Padding="14,10">
                                     <StackPanel MaxWidth="420">
@@ -87,12 +87,12 @@
         </Grid.ChildrenTransitions>
 
         <!-- ======================================================== -->
-        <!-- LEFT SIDEBAR — Control Panel                              -->
+        <!-- 左サイドバー - 操作パネル                                  -->
         <!-- ======================================================== -->
         <Border Background="{ThemeResource SidebarBackgroundBrush}">
             <Grid RowDefinitions="Auto,*,Auto">
 
-                <!-- App Header -->
+            <!-- アプリヘッダー -->
                 <StackPanel Padding="16,18,16,12">
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <Border Width="40" Height="40" CornerRadius="20"
@@ -101,22 +101,22 @@
                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <StackPanel VerticalAlignment="Center" Spacing="1">
-                            <TextBlock Text="P2P Chat" FontSize="17" FontWeight="Bold"
+                            <TextBlock Text="P2Pチャット" FontSize="17" FontWeight="Bold"
                                        Foreground="{ThemeResource PrimaryTextBrush}"/>
-                            <TextBlock Text="BLE · Wi-Fi Direct" FontSize="11"
+                            <TextBlock Text="BLE・Wi-Fi Direct" FontSize="11"
                                        Foreground="{ThemeResource SecondaryTextBrush}"/>
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
 
-                <!-- Scrollable Controls -->
+                <!-- スクロール可能な操作パネル -->
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                     <StackPanel Padding="14,0" Spacing="4">
 
-                        <!-- ─── Divider ─── -->
+                        <!-- 区切り線 -->
                         <Border Height="1" Background="{ThemeResource DividerBrush}" Margin="0,0,0,10"/>
 
-                        <!-- ══ Main Discovery Button ══ -->
+                        <!-- メイン探索ボタン -->
                         <Button x:Name="DiscoveryButton"
                                 Click="DiscoveryButton_Click"
                                 HorizontalAlignment="Stretch" Margin="0,0,0,8"
@@ -130,7 +130,7 @@
                             </StackPanel>
                         </Button>
 
-                        <!-- Status Indicators -->
+                        <!-- 状態表示 -->
                         <StackPanel Spacing="6" Margin="4,0,0,0">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <Ellipse x:Name="BleStatusDot" Width="8" Height="8"
@@ -149,15 +149,15 @@
                             </StackPanel>
                         </StackPanel>
 
-                        <!-- ─── Divider ─── -->
+                        <!-- 区切り線 -->
                         <Border Height="1" Background="{ThemeResource DividerBrush}" Margin="0,10,0,8"/>
 
-                        <!-- ── CONNECTION Section ── -->
-                        <TextBlock Text="CONNECTION" FontSize="11" FontWeight="Bold"
+                        <!-- 接続セクション -->
+                        <TextBlock Text="接続" FontSize="11" FontWeight="Bold"
                                    Foreground="{ThemeResource SectionHeaderBrush}"
                                    Margin="4,0,0,6" CharacterSpacing="80"/>
 
-                        <!-- Connect Button -->
+                        <!-- 接続ボタン -->
                         <Button x:Name="ConnectWifiButton" IsEnabled="False"
                                 Click="ConnectWifiButton_Click"
                                 HorizontalAlignment="Stretch" Margin="0,2"
@@ -166,11 +166,11 @@
                                 HorizontalContentAlignment="Center">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <FontIcon Glyph="&#xE71B;" FontSize="13"/>
-                                <TextBlock Text="ピアに接続" FontSize="13"/>
+                                <TextBlock Text="相手に接続" FontSize="13"/>
                             </StackPanel>
                         </Button>
 
-                        <!-- Disconnect Button -->
+                        <!-- 切断ボタン -->
                         <Button x:Name="DisconnectWifiButton" IsEnabled="False"
                                 Click="DisconnectWifiButton_Click"
                                 HorizontalAlignment="Stretch" Margin="0,2"
@@ -183,21 +183,21 @@
                             </StackPanel>
                         </Button>
 
-                        <!-- ─── Divider ─── -->
+                        <!-- 区切り線 -->
                         <Border Height="1" Background="{ThemeResource DividerBrush}" Margin="0,10,0,8"/>
 
-                        <!-- ── Advanced Settings (Expander) ── -->
+                        <!-- 詳細設定 -->
                         <Expander Header="詳細設定" HorizontalAlignment="Stretch"
                                   HorizontalContentAlignment="Stretch"
                                   Padding="0" IsExpanded="False">
                             <StackPanel Spacing="4" Padding="4,8">
-                                <!-- Advertise Toggle -->
+                                <!-- 広告トグル -->
                                 <Border CornerRadius="6" Padding="8,4">
                                     <Grid ColumnDefinitions="Auto,*,Auto">
                                         <FontIcon Glyph="&#xEC05;" FontSize="14"
                                                   Foreground="{ThemeResource SecondaryTextBrush}"
                                                   VerticalAlignment="Center"/>
-                                        <TextBlock Grid.Column="1" Text="BLE Advertise" Margin="10,0"
+                                        <TextBlock Grid.Column="1" Text="BLE広告" Margin="10,0"
                                                    VerticalAlignment="Center" FontSize="12"
                                                    Foreground="{ThemeResource PrimaryTextBrush}"/>
                                         <ToggleSwitch Grid.Column="2" x:Name="AdvertiseToggle"
@@ -205,13 +205,13 @@
                                                       Toggled="AdvertiseToggle_Toggled"/>
                                     </Grid>
                                 </Border>
-                                <!-- Scan Toggle -->
+                                <!-- スキャントグル -->
                                 <Border CornerRadius="6" Padding="8,4">
                                     <Grid ColumnDefinitions="Auto,*,Auto">
                                         <FontIcon Glyph="&#xE11A;" FontSize="14"
                                                   Foreground="{ThemeResource SecondaryTextBrush}"
                                                   VerticalAlignment="Center"/>
-                                        <TextBlock Grid.Column="1" Text="BLE Scan" Margin="10,0"
+                                        <TextBlock Grid.Column="1" Text="BLEスキャン" Margin="10,0"
                                                    VerticalAlignment="Center" FontSize="12"
                                                    Foreground="{ThemeResource PrimaryTextBrush}"/>
                                         <ToggleSwitch Grid.Column="2" x:Name="ScanToggle"
@@ -219,7 +219,7 @@
                                                       Toggled="ScanToggle_Toggled"/>
                                     </Grid>
                                 </Border>
-                                <!-- WiFi Service Toggle -->
+                                <!-- Wi-Fi Directトグル -->
                                 <Border CornerRadius="6" Padding="8,4">
                                     <Grid ColumnDefinitions="Auto,*,Auto">
                                         <FontIcon Glyph="&#xE701;" FontSize="14"
@@ -236,10 +236,10 @@
                             </StackPanel>
                         </Expander>
 
-                        <!-- ─── Divider ─── -->
+                        <!-- 区切り線 -->
                         <Border Height="1" Background="{ThemeResource DividerBrush}" Margin="0,8,0,4"/>
 
-                        <!-- Error Display -->
+                        <!-- エラー表示 -->
                         <TextBlock x:Name="ErrorText"
                                    Foreground="{ThemeResource ErrorBrush}"
                                    TextWrapping="Wrap" FontSize="12" Margin="4,0"
@@ -248,13 +248,13 @@
                     </StackPanel>
                 </ScrollViewer>
 
-                <!-- Bottom: Session Info + Theme Toggle -->
+                <!-- 下部: セッション情報とテーマ切替 -->
                 <StackPanel Grid.Row="2" Padding="14,8,14,14" Spacing="10">
                     <Border Height="1" Background="{ThemeResource DividerBrush}"/>
 
-                    <!-- Session Info -->
+                    <!-- セッション情報 -->
                     <StackPanel Spacing="3">
-                        <TextBlock Text="SESSION" FontSize="10" FontWeight="Bold"
+                        <TextBlock Text="セッション" FontSize="10" FontWeight="Bold"
                                    Foreground="{ThemeResource SectionHeaderBrush}"
                                    CharacterSpacing="80"/>
                         <TextBlock x:Name="LocalSessionText" FontSize="11"
@@ -263,7 +263,7 @@
                                    IsTextSelectionEnabled="True"/>
                     </StackPanel>
 
-                    <!-- Theme Toggle -->
+                    <!-- テーマ切替 -->
                     <Border CornerRadius="6" Padding="8,4">
                         <Grid ColumnDefinitions="Auto,*,Auto">
                             <FontIcon x:Name="ThemeIcon" Glyph="&#xE708;" FontSize="16"
@@ -282,22 +282,22 @@
         </Border>
 
         <!-- ======================================================== -->
-        <!-- CENTER — Peer List                                        -->
+        <!-- 中央: 相手一覧                                             -->
         <!-- ======================================================== -->
         <Border Grid.Column="1" Background="{ThemeResource PeerListBackgroundBrush}"
                 BorderBrush="{ThemeResource DividerBrush}" BorderThickness="1,0">
             <Grid RowDefinitions="Auto,*">
 
-                <!-- Header -->
+                <!-- 見出し -->
                 <StackPanel Padding="16,16,16,10" Spacing="2">
-                    <TextBlock Text="PEERS" FontSize="11" FontWeight="Bold"
+                    <TextBlock Text="相手" FontSize="11" FontWeight="Bold"
                                Foreground="{ThemeResource SectionHeaderBrush}"
                                CharacterSpacing="80"/>
                     <TextBlock x:Name="PeerCountText" Text="0 台発見" FontSize="11"
                                Foreground="{ThemeResource SecondaryTextBrush}"/>
                 </StackPanel>
 
-                <!-- Peer ListView -->
+                <!-- 相手一覧 -->
                 <ListView x:Name="PeerList" Grid.Row="1" Padding="6,0"
                           SelectionChanged="PeerList_SelectionChanged">
                     <ListView.ItemContainerTransitions>
@@ -317,14 +317,14 @@
                     <ListView.ItemTemplate>
                         <DataTemplate>
                             <Grid Padding="8,8" ColumnDefinitions="Auto,*">
-                                <!-- Avatar Circle -->
+                                <!-- 相手アイコン -->
                                 <Border Width="38" Height="38" CornerRadius="19"
                                         Background="{ThemeResource AccentBrush}">
                                     <TextBlock Text="{Binding Initial}"
                                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                                Foreground="White" FontWeight="Bold" FontSize="16"/>
                                 </Border>
-                                <!-- Info -->
+                                <!-- 相手情報 -->
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center"
                                             Margin="12,0,0,0" Spacing="2">
                                     <TextBlock Text="{Binding ShortId}" FontSize="13" FontWeight="SemiBold"
@@ -344,12 +344,12 @@
         </Border>
 
         <!-- ======================================================== -->
-        <!-- RIGHT — Chat Area                                         -->
+        <!-- 右側 - チャット領域                                        -->
         <!-- ======================================================== -->
         <Grid Grid.Column="2" Background="{ThemeResource AppBackgroundBrush}"
               RowDefinitions="Auto,*,Auto">
 
-            <!-- Channel Header Bar -->
+            <!-- チャットヘッダー -->
             <Border Background="{ThemeResource ChannelHeaderBrush}" Padding="20,14"
                     BorderBrush="{ThemeResource DividerBrush}" BorderThickness="0,0,0,1">
                 <Grid ColumnDefinitions="Auto,*,Auto">
@@ -360,7 +360,7 @@
                                    Foreground="{ThemeResource PrimaryTextBrush}"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
-                    <!-- Connection Status -->
+                    <!-- 接続状態 -->
                     <Border Grid.Column="2" CornerRadius="12" Padding="10,4"
                             Background="{ThemeResource InputBackgroundBrush}">
                         <StackPanel Orientation="Horizontal" Spacing="6">
@@ -374,7 +374,7 @@
                 </Grid>
             </Border>
 
-            <!-- Chat Messages ListView -->
+            <!-- チャットメッセージ一覧 -->
             <ListView x:Name="ChatList" Grid.Row="1" Padding="8,8"
                       SelectionMode="None"
                       ItemTemplateSelector="{StaticResource ChatTemplateSelector}">
@@ -393,7 +393,7 @@
                 </ListView.ItemContainerStyle>
             </ListView>
 
-            <!-- Message Input Bar -->
+            <!-- メッセージ入力欄 -->
             <Border Grid.Row="2" Margin="16,0,16,16">
                 <Border Background="{ThemeResource InputBackgroundBrush}"
                         CornerRadius="8" Padding="6">

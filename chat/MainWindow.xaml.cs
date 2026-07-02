@@ -17,21 +17,21 @@ namespace chat
         private readonly WifiDirectChatService _wifiDirectChat;
         private readonly ObservableCollection<PeerViewModel> _peers = new();
         private readonly ObservableCollection<ChatMessageViewModel> _chatMessages = new();
-        private string _advertisingStatus = "Stopped";
-        private string _scanningStatus = "Stopped";
-        private string _wifiServiceStatus = "Stopped";
+        private string _advertisingStatus = "停止";
+        private string _scanningStatus = "停止";
+        private string _wifiServiceStatus = "停止";
         private string _wifiConnectionStatus = "未接続";
         private bool _isUpdatingUI;
         private bool _isDiscovering;
 
-        // Status indicator brushes
+        // 状態表示用のブラシ
         private static readonly SolidColorBrush _successBrush = new(Color.FromArgb(255, 87, 242, 135));
         private static readonly SolidColorBrush _errorBrush = new(Color.FromArgb(255, 237, 66, 69));
         private static readonly SolidColorBrush _inactiveBrush = new(Color.FromArgb(255, 148, 155, 164));
         private static readonly SolidColorBrush _accentBrush = new(Color.FromArgb(255, 88, 101, 242));
         private static readonly SolidColorBrush _dangerBtnBrush = new(Color.FromArgb(255, 218, 55, 60));
 
-        // Pulse animations for status dots
+        // 状態ドットの点滅アニメーション
         private Storyboard? _blePulse;
         private Storyboard? _wifiPulse;
         private Storyboard? _connectedPulse;
@@ -45,13 +45,13 @@ namespace chat
             ChatList.ItemsSource = _chatMessages;
             LocalSessionText.Text = _bleDiscovery.SessionId.ToString();
 
-            // Wire up BLE events
+            // BLEイベントを接続
             _bleDiscovery.PublisherStatusChanged += BleDiscovery_PublisherStatusChanged;
             _bleDiscovery.WatcherStatusChanged += BleDiscovery_WatcherStatusChanged;
             _bleDiscovery.ErrorOccurred += Service_ErrorOccurred;
             _bleDiscovery.PeerDiscovered += BleDiscovery_PeerDiscovered;
 
-            // Wire up Wi-Fi Direct events
+            // Wi-Fi Directイベントを接続
             _wifiDirectChat.StatusChanged += WifiDirectChat_StatusChanged;
             _wifiDirectChat.ErrorOccurred += Service_ErrorOccurred;
             _wifiDirectChat.PeerDiscovered += WifiDirectChat_PeerDiscovered;
@@ -65,9 +65,9 @@ namespace chat
             SyncUI();
         }
 
-        // ─────────────────────────────────────────────
-        // Animations
-        // ─────────────────────────────────────────────
+
+        // アニメーション
+
 
         private void InitializeAnimations()
         {
@@ -95,9 +95,9 @@ namespace chat
             return storyboard;
         }
 
-        // ─────────────────────────────────────────────
-        // Send Message
-        // ─────────────────────────────────────────────
+
+        // メッセージ送信
+
 
         private async void SendButton_Click(object sender, RoutedEventArgs e)
         {
@@ -135,7 +135,7 @@ namespace chat
             MessageBox.Text = "";
             _chatMessages.Add(new ChatMessageViewModel
             {
-                Sender = "Me",
+                Sender = "自分",
                 Message = message,
                 Timestamp = DateTime.Now.ToString("HH:mm"),
                 IsMe = true
@@ -143,9 +143,9 @@ namespace chat
             ScrollChatToBottom();
         }
 
-        // ─────────────────────────────────────────────
-        // Discovery (One-tap start/stop)
-        // ─────────────────────────────────────────────
+
+        // 探索の開始/停止
+
 
         private async void DiscoveryButton_Click(object sender, RoutedEventArgs e)
         {
@@ -174,9 +174,9 @@ namespace chat
             SyncUI();
         }
 
-        // ─────────────────────────────────────────────
-        // Advanced Toggle Handlers
-        // ─────────────────────────────────────────────
+
+        // 詳細トグルの処理
+
 
         private void AdvertiseToggle_Toggled(object sender, RoutedEventArgs e)
         {
@@ -211,9 +211,9 @@ namespace chat
             SyncUI();
         }
 
-        // ─────────────────────────────────────────────
-        // Connection Handlers
-        // ─────────────────────────────────────────────
+
+        // 接続操作の処理
+
 
         private async void ConnectWifiButton_Click(object sender, RoutedEventArgs e)
         {
@@ -246,9 +246,9 @@ namespace chat
             ThemeLabel.Text = isDark ? "ダークモード" : "ライトモード";
         }
 
-        // ─────────────────────────────────────────────
-        // Service Event Handlers
-        // ─────────────────────────────────────────────
+
+        // サービスイベントの処理
+
 
         private void BleDiscovery_PublisherStatusChanged(object? sender, string status)
         {
@@ -308,7 +308,7 @@ namespace chat
             {
                 _chatMessages.Add(new ChatMessageViewModel
                 {
-                    Sender = "Peer",
+                    Sender = "相手",
                     Message = message,
                     Timestamp = DateTime.Now.ToString("HH:mm"),
                     IsMe = false
@@ -332,9 +332,9 @@ namespace chat
             DispatcherQueue.TryEnqueue(() => ShowError(message));
         }
 
-        // ─────────────────────────────────────────────
-        // Peer Management
-        // ─────────────────────────────────────────────
+
+        // 相手情報の管理
+
 
         private void UpsertBlePeer(BlePeer peer)
         {
@@ -373,13 +373,13 @@ namespace chat
             return null;
         }
 
-        // ─────────────────────────────────────────────
-        // UI Update Helpers
-        // ─────────────────────────────────────────────
+
+        // UI更新補助
+
 
         private void UpdateStatusDisplay()
         {
-            // — BLE status indicator —
+            // BLE状態表示
             var bleActive = _bleDiscovery.IsAdvertising || _bleDiscovery.IsScanning;
             BleStatusLabel.Text = bleActive
                 ? $"BLE: {_advertisingStatus} / {_scanningStatus}"
@@ -396,7 +396,7 @@ namespace chat
                 BleStatusDot.Opacity = 1.0;
             }
 
-            // — Wi-Fi Direct status indicator —
+            // Wi-Fi Direct状態表示
             var wifiActive = _wifiDirectChat.IsStarted;
             var connected = _wifiDirectChat.IsConnected;
             WifiStatusLabel.Text = wifiActive
@@ -414,7 +414,7 @@ namespace chat
                 WifiStatusDot.Opacity = 1.0;
             }
 
-            // — Connection status (chat header) —
+            // 接続状態表示
             ConnectionStatusLabel.Text = connected ? "接続済み" : "未接続";
             ConnectionStatusDot.Fill = connected ? _successBrush : _errorBrush;
 
@@ -431,13 +431,13 @@ namespace chat
 
         private void SyncUI()
         {
-            // Discovery button
+            // 探索ボタン
             _isDiscovering = _bleDiscovery.IsAdvertising || _bleDiscovery.IsScanning || _wifiDirectChat.IsStarted;
             DiscoveryButtonText.Text = _isDiscovering ? "探索停止" : "探索開始";
             DiscoveryButtonIcon.Glyph = _isDiscovering ? "\uE711" : "\uE11A";
             DiscoveryButton.Background = _isDiscovering ? _dangerBtnBrush : _accentBrush;
 
-            // Advanced toggles
+            // 詳細トグル
             _isUpdatingUI = true;
             AdvertiseToggle.IsOn = _bleDiscovery.IsAdvertising;
             ScanToggle.IsOn = _bleDiscovery.IsScanning;

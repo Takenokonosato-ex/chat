@@ -33,7 +33,7 @@ public sealed class SocketMessageChannel : IDisposable
 
     public async Task<Guid> HandshakeAsync(Guid localSessionId)
     {
-        // 自分のセッションIDを送る (16 bytes raw)
+            // 自分のセッションIDを送る (16バイトの生データ)
         await _writeLock.WaitAsync();
         try
         {
@@ -46,7 +46,7 @@ public sealed class SocketMessageChannel : IDisposable
             _writeLock.Release();
         }
 
-        // 相手のセッションIDを受け取る (16 bytes raw)
+            // 相手のセッションIDを受け取る (16バイトの生データ)
         if (!await LoadExactAsync(16))
         {
             return Guid.Empty;
@@ -86,7 +86,7 @@ public sealed class SocketMessageChannel : IDisposable
         var length = _reader.ReadUInt32();
         if (length > MaxMessageBytes)
         {
-            throw new InvalidOperationException($"Received message is too large ({length} bytes).");
+            throw new InvalidOperationException($"受信メッセージが大きすぎます ({length} バイト)。");
         }
 
         if (length == 0)

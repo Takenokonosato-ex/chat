@@ -56,11 +56,11 @@ public sealed class BleDiscoveryService : IDisposable
         try
         {
             _publisher.Start();
-            PublisherStatusChanged?.Invoke(this, $"Advertising: {_publisher.Status}");
+            PublisherStatusChanged?.Invoke(this, $"広告: {ToJapaneseStatus(_publisher.Status)}");
         }
         catch (Exception ex)
         {
-            ErrorOccurred?.Invoke(this, $"BLE advertise start failed: {ex.Message}");
+            ErrorOccurred?.Invoke(this, $"BLE広告の開始に失敗しました: {ex.Message}");
             StopAdvertising();
         }
     }
@@ -83,12 +83,12 @@ public sealed class BleDiscoveryService : IDisposable
         }
         catch (Exception ex)
         {
-            ErrorOccurred?.Invoke(this, $"BLE advertise stop failed: {ex.Message}");
+            ErrorOccurred?.Invoke(this, $"BLE広告の停止に失敗しました: {ex.Message}");
         }
         finally
         {
             _publisher = null;
-            PublisherStatusChanged?.Invoke(this, "Advertising: Stopped");
+            PublisherStatusChanged?.Invoke(this, "広告: 停止");
         }
     }
 
@@ -113,11 +113,11 @@ public sealed class BleDiscoveryService : IDisposable
         try
         {
             _watcher.Start();
-            WatcherStatusChanged?.Invoke(this, $"Scanning: {_watcher.Status}");
+            WatcherStatusChanged?.Invoke(this, $"スキャン: {ToJapaneseStatus(_watcher.Status)}");
         }
         catch (Exception ex)
         {
-            ErrorOccurred?.Invoke(this, $"BLE scan start failed: {ex.Message}");
+            ErrorOccurred?.Invoke(this, $"BLEスキャンの開始に失敗しました: {ex.Message}");
             StopScanning();
         }
     }
@@ -141,12 +141,12 @@ public sealed class BleDiscoveryService : IDisposable
         }
         catch (Exception ex)
         {
-            ErrorOccurred?.Invoke(this, $"BLE scan stop failed: {ex.Message}");
+            ErrorOccurred?.Invoke(this, $"BLEスキャンの停止に失敗しました: {ex.Message}");
         }
         finally
         {
             _watcher = null;
-            WatcherStatusChanged?.Invoke(this, "Scanning: Stopped");
+            WatcherStatusChanged?.Invoke(this, "スキャン: 停止");
         }
     }
 
@@ -164,21 +164,21 @@ public sealed class BleDiscoveryService : IDisposable
 
     private void Publisher_StatusChanged(BluetoothLEAdvertisementPublisher sender, BluetoothLEAdvertisementPublisherStatusChangedEventArgs args)
     {
-        PublisherStatusChanged?.Invoke(this, $"Advertising: {args.Status}");
+        PublisherStatusChanged?.Invoke(this, $"広告: {ToJapaneseStatus(args.Status)}");
 
         if (args.Error != BluetoothError.Success)
         {
-            ErrorOccurred?.Invoke(this, $"BLE advertise status error: {args.Error}");
+            ErrorOccurred?.Invoke(this, $"BLE広告の状態エラー: {ToJapaneseError(args.Error)}");
         }
     }
 
     private void Watcher_Stopped(BluetoothLEAdvertisementWatcher sender, BluetoothLEAdvertisementWatcherStoppedEventArgs args)
     {
-        WatcherStatusChanged?.Invoke(this, $"Scanning: Stopped ({args.Error})");
+        WatcherStatusChanged?.Invoke(this, $"スキャン: 停止 ({ToJapaneseError(args.Error)})");
 
         if (args.Error != BluetoothError.Success)
         {
-            ErrorOccurred?.Invoke(this, $"BLE scan stopped with error: {args.Error}");
+            ErrorOccurred?.Invoke(this, $"BLEスキャンがエラーで停止しました: {ToJapaneseError(args.Error)}");
         }
     }
 
@@ -201,6 +201,44 @@ public sealed class BleDiscoveryService : IDisposable
             this,
             new BlePeer(args.BluetoothAddress, session.SessionId, session.Nonce, args.RawSignalStrengthInDBm, args.Timestamp));
     }
+
+    private static string ToJapaneseStatus(BluetoothLEAdvertisementPublisherStatus status) =>
+        status switch
+        {
+            BluetoothLEAdvertisementPublisherStatus.Created => "作成済み",
+            BluetoothLEAdvertisementPublisherStatus.Waiting => "待機中",
+            BluetoothLEAdvertisementPublisherStatus.Started => "開始",
+            BluetoothLEAdvertisementPublisherStatus.Stopping => "停止中",
+            BluetoothLEAdvertisementPublisherStatus.Stopped => "停止",
+            BluetoothLEAdvertisementPublisherStatus.Aborted => "中断",
+            _ => status.ToString()
+        };
+
+    private static string ToJapaneseStatus(BluetoothLEAdvertisementWatcherStatus status) =>
+        status switch
+        {
+            BluetoothLEAdvertisementWatcherStatus.Created => "作成済み",
+            BluetoothLEAdvertisementWatcherStatus.Started => "開始",
+            BluetoothLEAdvertisementWatcherStatus.Stopping => "停止中",
+            BluetoothLEAdvertisementWatcherStatus.Stopped => "停止",
+            BluetoothLEAdvertisementWatcherStatus.Aborted => "中断",
+            _ => status.ToString()
+        };
+
+    private static string ToJapaneseError(BluetoothError error) =>
+        error switch
+        {
+            BluetoothError.Success => "正常",
+            BluetoothError.RadioNotAvailable => "Bluetooth無線を利用できません",
+            BluetoothError.ResourceInUse => "リソースが使用中です",
+            BluetoothError.DeviceNotConnected => "デバイスが接続されていません",
+            BluetoothError.DisabledByPolicy => "ポリシーにより無効です",
+            BluetoothError.DisabledByUser => "ユーザーにより無効です",
+            BluetoothError.NotSupported => "サポートされていません",
+            BluetoothError.TransportNotSupported => "転送方式がサポートされていません",
+            BluetoothError.OtherError => "その他のエラー",
+            _ => error.ToString()
+        };
 
     private void ThrowIfDisposed()
     {
