@@ -429,8 +429,8 @@ public sealed class WifiDirectChatService : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    LogDebug($"[Wi-Fi Direct] 接続準備に失敗しました: {ex}");
-                    ErrorOccurred?.Invoke(this, $"ペアリング確認エラー: {ex.Message}");
+                    LogDebug($"[Wi-Fi Direct] 接続準備に失敗しました: {ex.Message} (HResult={ex.HResult:X8})\nStackTrace: {ex.StackTrace}");
+                    ErrorOccurred?.Invoke(this, $"ペアリング設定エラー (HResult: 0x{ex.HResult:X8}): {ex.Message}");
                     tcs.TrySetException(ex);
                 }
             }))
@@ -473,7 +473,9 @@ public sealed class WifiDirectChatService : IDisposable
         }
         catch (Exception ex)
         {
-            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct接続に失敗しました: {ex.Message}。モバイルホットスポットがONの場合はOFFにして再試行してください。");
+            string errMsg = $"[Wi-Fi Direct] 接続に失敗しました: {ex.Message} (HResult={ex.HResult:X8})\nStackTrace: {ex.StackTrace}";
+            LogDebug(errMsg);
+            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct接続エラー (HResult: 0x{ex.HResult:X8}): {ex.Message}. モバイルホットスポットがONの場合はOFFにしてください。");
             CloseConnection();
         }
         finally
@@ -553,7 +555,7 @@ public sealed class WifiDirectChatService : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    LogDebug($"[Wi-Fi Direct] 受信側の接続準備に失敗しました: {ex}");
+                    LogDebug($"[Wi-Fi Direct] 受信側の接続準備に失敗しました: {ex.Message} (HResult={ex.HResult:X8})\nStackTrace: {ex.StackTrace}");
                     tcs.TrySetException(ex);
                 }
             }))
@@ -583,7 +585,9 @@ public sealed class WifiDirectChatService : IDisposable
         }
         catch (Exception ex)
         {
-            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct受信に失敗しました: {ex.Message}。モバイルホットスポットがONの場合はOFFにして再試行してください。");
+            string errMsg = $"[Wi-Fi Direct] 受信に失敗しました: {ex.Message} (HResult={ex.HResult:X8})\nStackTrace: {ex.StackTrace}";
+            LogDebug(errMsg);
+            ErrorOccurred?.Invoke(this, $"Wi-Fi Direct受諾エラー (HResult: 0x{ex.HResult:X8}): {ex.Message}. モバイルホットスポットがONの場合はOFFにしてください。");
             CloseConnection();
         }
         finally

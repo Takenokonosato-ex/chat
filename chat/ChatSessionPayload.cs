@@ -14,7 +14,7 @@ public readonly record struct ChatSessionPayload(Guid SessionId, uint Nonce)
     public const byte Version = 1;
     public const ushort BleCompanyId = 0xFFFF;
     public const byte WifiDirectOuiType = 0x43;
-    public static readonly byte[] Magic = Encoding.ASCII.GetBytes("CHAT");
+    public static readonly byte[] Magic = Encoding.ASCII.GetBytes("CH");
     public static readonly byte[] WifiDirectOui = { 0x00, 0x50, 0xF2 };
 
     public static ChatSessionPayload CreateLocal() => new(EncodeNameToGuid(Environment.MachineName), CreateNonce());
@@ -67,8 +67,17 @@ public readonly record struct ChatSessionPayload(Guid SessionId, uint Nonce)
         };
         writer.WriteBytes(Magic);
         writer.WriteByte(Version);
-        writer.WriteBytes(SessionId.ToByteArray());
-        writer.WriteUInt32(Nonce);
+        
+        // 通信データを小さくするため、Nonceはushort (2バイト) に縮めます。
+        writer.WriteUInt16((ushort)(Nonce & 0xFFFF));
+
+        // 16バイトのGuid全体ではなくPC名を書き込みます。
+        string pcName = DecodeNameFromGuid(SessionId);
+        byte[] nameBytes = Encoding.UTF8.GetBytes(pcName);
+        byte nameLen = (byte)Math.Min(nameBytes.Length, 15); // 最大15バイト
+        writer.WriteByte(nameLen);
+        writer.WriteBytes(nameBytes.Take(nameLen).ToArray());
+
         return writer.DetachBuffer();
     }
 
@@ -78,7 +87,8 @@ public readonly record struct ChatSessionPayload(Guid SessionId, uint Nonce)
     {
         session = default;
 
-        if (payload.Length < Magic.Length + 1 + 16 + sizeof(uint))
+        // 最小長: Magic(2) + Version(1) + Nonce(2) + NameLen(1) = 6バイト
+        if (payload.Length < 6)
         {
             return false;
         }
@@ -100,9 +110,21 @@ public readonly record struct ChatSessionPayload(Guid SessionId, uint Nonce)
             return false;
         }
 
-        var guidBytes = new byte[16];
-        reader.ReadBytes(guidBytes);
-        session = new ChatSessionPayload(new Guid(guidBytes), reader.ReadUInt32());
+        ushort shortNonce = reader.ReadUInt16();
+        byte nameLen = reader.ReadByte();
+
+        if (payload.Length < 6 + nameLen)
+        {
+            return false;
+        }
+
+        var nameBytes = new byte[nameLen];
+        reader.ReadBytes(nameBytes);
+        string pcName = Encoding.UTF8.GetString(nameBytes);
+
+        // PC名からGuidを復元します。
+        Guid sessionId = EncodeNameToGuid(pcName);
+        session = new ChatSessionPayload(sessionId, shortNonce);
         return true;
     }
 
